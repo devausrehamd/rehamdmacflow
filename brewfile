@@ -1,0 +1,22 @@
+# Brewfile for the QMS AGENT project
+# Install everuthing with `brew bundle`
+#
+# This file is idempotent, so you can run `brew bundle` multiple times without any issues.
+
+# --Core Tooling --
+
+brew "node@22".       # Node 20+ required. Pinned to 22 LTS
+brew "git".           # Version control system
+brew "jq".            # Command-line JSON processor
+
+# --Local AI Stack --
+brew "ollama".        # Local LLM inference (Qwen, Embeddings)
+brew "redis".         # In-memory data store for caching and vector storage
+
+# --Container Runtime --
+# Docker is heavy, so we are installating Orbstack instead, which is more lightweight and works well on macOS.
+cask "orbstack"
+
+# --optional tools --
+brew "watch"           # For monitoring logs and processes
+brew "httpie"          # User-friendly HTTP client for testing APIs

@@ -1,0 +1,205 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "🚀 Install: Full stack setup",
+      "type": "shell",
+      "command": "./setup.sh",
+      "detail": "Run setup.sh - installs brew packages, pulls Ollama models, starts Qdrant",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
+    {
+      "label": "🩺 Status: Check all services",
+      "type": "shell",
+      "command": "./health.sh",
+      "detail": "Quick health check of Ollama, Qdrant, Redis, and project config",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": false, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
+
+    {
+      "label": "📥 Ingest: From QMS git repo",
+      "type": "shell",
+      "command": "npm run ingest:repo",
+      "detail": "Fetch QMS docs from the git repo in ingestion.json, convert formats, chunk, load into Qdrant",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
+    {
+      "label": "📥 Ingest: From local QMS_FOLDER",
+      "type": "shell",
+      "command": "npm run ingest",
+      "detail": "Ingest from the local folder specified by QMS_FOLDER in .env",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
+    {
+      "label": "🧹 Clear: Qdrant collection",
+      "type": "shell",
+      "command": "npm run reset",
+      "detail": "Drop and recreate the qms_documents collection (asks for confirmation)",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
+    {
+      "label": "🔄 Reingest: Clear + ingest from git",
+      "type": "shell",
+      "command": "npm run reset -- --yes && npm run ingest:repo",
+      "detail": "Clear the collection (no confirmation) and re-ingest from the git repo. For the iterate/clear cycle.",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
+    {
+      "label": "🔄 Reingest: Clear + ingest from local",
+      "type": "shell",
+      "command": "npm run reset -- --yes && npm run ingest",
+      "detail": "Clear the collection (no confirmation) and re-ingest from the local QMS_FOLDER",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
+    {
+      "label": "🔍 Test: Retrieval",
+      "type": "shell",
+      "command": "npm run test-retrieval -- \"${input:searchQuery}\"",
+      "detail": "Run a semantic search against the qms_documents collection to verify ingestion quality",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
+    {
+      "label": "🌐 Open: Qdrant dashboard",
+      "type": "shell",
+      "command": "open http://localhost:6333/dashboard",
+      "detail": "Open the Qdrant web UI in your browser to inspect chunks and metadata",
+      "problemMatcher": [],
+      "presentation": { "reveal": "silent", "panel": "shared" }
+    },
+
+    {
+      "label": "🤖 Agent: Run draft",
+      "type": "shell",
+      "command": "npm run agent",
+      "detail": "Run the drafting agent",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always", "panel": "dedicated", "clear": true
+      },
+      "group": { "kind": "build", "isDefault": true }
+    },
+
+    {
+      "label": "🛑 Teardown: Stop services (keep data)",
+      "type": "shell",
+      "command": "./teardown.sh",
+      "detail": "Stop Ollama, Redis, Colima, and Qdrant. Data preserved.",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
+    {
+      "label": "💥 Teardown: Purge all data",
+      "type": "shell",
+      "command": "./teardown.sh",
+      "args": ["--purge"],
+      "detail": "Stop services AND delete Qdrant volume and Redis data. Asks for confirmation.",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
+
+    {
+      "label": "Ollama: Restart",
+      "type": "shell",
+      "command": "brew services restart ollama",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    },
+    {
+      "label": "Ollama: List models",
+      "type": "shell",
+      "command": "ollama list",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    },
+    {
+      "label": "Qdrant: Restart container",
+      "type": "shell",
+      "command": "docker restart qdrant",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    },
+    {
+      "label": "Qdrant: Tail logs",
+      "type": "shell",
+      "command": "docker logs -f qdrant",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    },
+    {
+      "label": "Redis: Restart",
+      "type": "shell",
+      "command": "brew services restart redis",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    },
+    {
+      "label": "Redis: Open CLI",
+      "type": "shell",
+      "command": "redis-cli",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    },
+
+    {
+      "label": "TypeScript: Type check",
+      "type": "shell",
+      "command": "npm run typecheck",
+      "problemMatcher": ["$tsc"],
+      "presentation": { "reveal": "silent", "panel": "shared" },
+      "group": "test"
+    },
+    {
+      "label": "Lint: ESLint",
+      "type": "shell",
+      "command": "npm run lint",
+      "problemMatcher": ["$eslint-stylish"],
+      "presentation": { "reveal": "silent", "panel": "shared" },
+      "group": "test"
+    },
+    {
+      "label": "Format: Prettier",
+      "type": "shell",
+      "command": "npm run format",
+      "problemMatcher": [],
+      "presentation": { "reveal": "silent", "panel": "shared" }
+    }
+  ],
+
+  "inputs": [
+    {
+      "id": "searchQuery",
+      "type": "promptString",
+      "description": "Search query to test against the QMS collection",
+      "default": "what is required for software safety classification"
+    }
+  ]
+}

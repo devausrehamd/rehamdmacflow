@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Environment / local secrets
+.env
+.env.local
+
+# Ingestion cache (fetched + converted source docs)
+.ingest-cache/
+
+# Local-only ingestion config (use config/ingestion.local.example.json as a template)
+config/ingestion.local.json
+
+# Build output
+dist/
+
+# macOS
+.DS_Store
+
+# Logs
+*.log

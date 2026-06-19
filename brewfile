@@ -1,22 +1,29 @@
-# Brewfile for the QMS AGENT project
-# Install everuthing with `brew bundle`
+# Brewfile for the QMS Agent project
+# Install everything in this file with:
+#   brew bundle
 #
-# This file is idempotent, so you can run `brew bundle` multiple times without any issues.
+# This file is idempotent. Re-running it on a machine that already has
+# the packages does nothing.
+#
+# Note: Node.js is NOT managed via brew. Use nvm (Node Version Manager)
+# and the .nvmrc file at the project root. This avoids version conflicts
+# between projects and prevents Homebrew-related linking issues.
+# Install nvm: https://github.com/nvm-sh/nvm
 
-# --Core Tooling --
+# Core tooling
+brew "git"
+brew "jq"
 
-brew "node@22".       # Node 20+ required. Pinned to 22 LTS
-brew "git".           # Version control system
-brew "jq".            # Command-line JSON processor
+# Local AI stack
+brew "ollama"
+brew "redis"
 
-# --Local AI Stack --
-brew "ollama".        # Local LLM inference (Qwen, Embeddings)
-brew "redis".         # In-memory data store for caching and vector storage
+# Container runtime (open source)
+# Colima provides a Docker-compatible daemon in a lightweight Linux VM.
+# The docker CLI is separate; both are required.
+brew "colima"
+brew "docker"
 
-# --Container Runtime --
-# Docker is heavy, so we are installating Orbstack instead, which is more lightweight and works well on macOS.
-cask "orbstack"
-
-# --optional tools --
-brew "watch"           # For monitoring logs and processes
-brew "httpie"          # User-friendly HTTP client for testing APIs
+# Optional but recommended
+brew "watch"
+brew "httpie"

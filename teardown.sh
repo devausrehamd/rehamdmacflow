@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# teardown.sh — Stop services and optionally remove data.
+# teardown.sh - Stop services and optionally remove data.
 #
 # Usage:
 #   ./teardown.sh           # Stop services, keep data
-#   ./teardown.sh --purge   # Stop services AND delete all data (Qdrant, Redis)
+#   ./teardown.sh --purge   # Stop services AND delete all data
 
 set -euo pipefail
 
@@ -22,22 +22,35 @@ if [[ "${1:-}" == "--purge" ]]; then
     PURGE=true
 fi
 
-# --- Stop services ---
+# Stop background services
 step "Stopping background services"
 brew services stop redis  2>/dev/null || warn "Redis service was not running"
 brew services stop ollama 2>/dev/null || warn "Ollama service was not running"
 info "Services stopped"
 
-# --- Stop Qdrant container ---
+# Stop Qdrant container (only if Colima/Docker is running)
 step "Stopping Qdrant container"
-if docker ps --format '{{.Names}}' | grep -q '^qdrant$'; then
-    docker stop qdrant >/dev/null
-    info "Qdrant stopped"
+if docker info >/dev/null 2>&1; then
+    if docker ps --format '{{.Names}}' | grep -q '^qdrant$'; then
+        docker stop qdrant >/dev/null
+        info "Qdrant container stopped"
+    else
+        info "Qdrant container was not running"
+    fi
 else
-    info "Qdrant was not running"
+    info "Docker daemon not running; skipping container stop"
 fi
 
-# --- Purge (optional) ---
+# Stop Colima
+step "Stopping Colima"
+if colima status 2>/dev/null | grep -q "Running"; then
+    colima stop
+    info "Colima stopped"
+else
+    info "Colima was not running"
+fi
+
+# Purge (optional)
 if $PURGE; then
     step "Purging data"
 
@@ -52,6 +65,13 @@ if $PURGE; then
         exit 0
     fi
 
+    # Need Colima up to remove the container cleanly
+    if ! colima status 2>/dev/null | grep -q "Running"; then
+        info "Starting Colima briefly to clean up container..."
+        colima start
+        sleep 5
+    fi
+
     # Qdrant
     if docker ps -a --format '{{.Names}}' | grep -q '^qdrant$'; then
         docker rm qdrant >/dev/null
@@ -60,7 +80,10 @@ if $PURGE; then
     rm -rf "$HOME/qms-agent-data/qdrant"
     info "Qdrant data deleted"
 
-    # Redis — flush keys; the daemon stays untouched
+    # Stop Colima again after cleanup
+    colima stop
+
+    # Redis - flush keys
     brew services start redis >/dev/null
     sleep 1
     redis-cli FLUSHALL >/dev/null

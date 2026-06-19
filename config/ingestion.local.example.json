@@ -1,0 +1,42 @@
+{
+  "source": {
+    "type": "local",
+    "url": "~/Documents/QMS",
+    "branch": "",
+    "subpath": "",
+    "localPath": ""
+  },
+  "conversion": {
+    "outputPath": ".ingest-cache/converted",
+    "strategies": {
+      ".md":   { "handler": "passthrough" },
+      ".txt":  { "handler": "passthrough" },
+      ".docx": { "handler": "docx-to-md" },
+      ".xlsx": { "handler": "xlsx-to-md", "options": { "preserveHeaders": true, "maxRowsPerChunk": 50 } },
+      ".xls":  { "handler": "xlsx-to-md", "options": { "preserveHeaders": true, "maxRowsPerChunk": 50 } },
+      ".pdf":  { "handler": "pdf-to-md" }
+    },
+    "skipPatterns": [
+      "**/.git/**",
+      "**/node_modules/**",
+      "**/~$*",
+      "**/.DS_Store",
+      "**/Thumbs.db"
+    ]
+  },
+  "chunking": {
+    "default": {
+      "strategy": "characters",
+      "size": 800,
+      "overlap": 100
+    },
+    "perFileType": {
+      ".xlsx": { "strategy": "tabular", "rowsPerChunk": 50, "repeatHeaders": true },
+      ".xls":  { "strategy": "tabular", "rowsPerChunk": 50, "repeatHeaders": true }
+    }
+  },
+  "qdrant": {
+    "collection": "qms_documents",
+    "recreateOnIngest": false
+  }
+}

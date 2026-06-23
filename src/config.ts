@@ -1,10 +1,16 @@
 // src/config.ts
 //
-// Environment-driven configuration. The ONLY place in the project that
-// reads process.env directly. Everything else imports `config` from here.
+// Environment-driven configuration. Single point of process.env access.
+// Validated via Zod at startup - missing or malformed values fail fast
+// with a clear error.
 //
-// Validation via Zod catches missing or malformed values at startup
-// rather than at runtime when a query fails for mysterious reasons.
+// The shape is tier-aware: qdrant.operations.url, redis.operations.host.
+// For v1 with one tier, there's one entry per service. When tiers split,
+// add entries for engineering, financial, etc. without changing call sites.
+//
+// Backward compatibility: old QDRANT_URL and REDIS_HOST env vars are read
+// as fallbacks for the new tier-prefixed names, so existing .env files
+// keep working.
 
 import "dotenv/config";
 import { z } from "zod";
@@ -16,12 +22,29 @@ const ConfigSchema = z.object({
     embedModel: z.string().min(1),
   }),
   qdrant: z.object({
-    url: z.string().url(),
-    collection: z.string().min(1),
+    operations: z.object({
+      url: z.string().url(),
+      collection: z.string().min(1),
+    }),
   }),
   redis: z.object({
+    operations: z.object({
+      host: z.string().min(1),
+      port: z.number().int().positive(),
+    }),
+  }),
+  postgres: z.object({
     host: z.string().min(1),
     port: z.number().int().positive(),
+    user: z.string().min(1),
+    password: z.string().min(1),
+    database: z.string().min(1),
+  }),
+  api: z.object({
+    port: z.number().int().positive(),
+    jwtSecret: z.string().min(32, "JWT secret must be at least 32 characters"),
+    accessTokenTtlMinutes: z.number().int().positive().default(15),
+    refreshTokenTtlDays: z.number().int().positive().default(7),
   }),
   qmsFolder: z.string().min(1),
   logLevel: z.enum(["debug", "info", "warn", "error"]).default("info"),
@@ -37,12 +60,30 @@ function loadConfig(): Config {
       embedModel: process.env.OLLAMA_EMBED_MODEL,
     },
     qdrant: {
-      url: process.env.QDRANT_URL,
-      collection: process.env.QDRANT_COLLECTION,
+      operations: {
+        // Prefer new tier-prefixed names, fall back to legacy ones
+        url: process.env.QDRANT_OPERATIONS_URL ?? process.env.QDRANT_URL,
+        collection: process.env.QDRANT_OPERATIONS_COLLECTION ?? process.env.QDRANT_COLLECTION,
+      },
     },
     redis: {
-      host: process.env.REDIS_HOST,
-      port: Number(process.env.REDIS_PORT ?? 6379),
+      operations: {
+        host: process.env.REDIS_OPERATIONS_HOST ?? process.env.REDIS_HOST,
+        port: Number(process.env.REDIS_OPERATIONS_PORT ?? process.env.REDIS_PORT ?? 6379),
+      },
+    },
+    postgres: {
+      host: process.env.POSTGRES_HOST,
+      port: Number(process.env.POSTGRES_PORT ?? 5432),
+      user: process.env.POSTGRES_USER,
+      password: process.env.POSTGRES_PASSWORD,
+      database: process.env.POSTGRES_DATABASE,
+    },
+    api: {
+      port: Number(process.env.API_PORT ?? 4000),
+      jwtSecret: process.env.JWT_SECRET,
+      accessTokenTtlMinutes: Number(process.env.ACCESS_TOKEN_TTL_MINUTES ?? 15),
+      refreshTokenTtlDays: Number(process.env.REFRESH_TOKEN_TTL_DAYS ?? 7),
     },
     qmsFolder: process.env.QMS_FOLDER,
     logLevel: process.env.LOG_LEVEL,

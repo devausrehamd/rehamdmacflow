@@ -5,7 +5,7 @@
       "label": "🚀 Install: Full stack setup",
       "type": "shell",
       "command": "./setup.sh",
-      "detail": "Run setup.sh - installs brew packages, pulls Ollama models, starts Qdrant",
+      "detail": "Run setup.sh - installs brew packages, pulls Ollama models, starts services",
       "problemMatcher": [],
       "presentation": {
         "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
@@ -15,7 +15,7 @@
       "label": "🩺 Status: Check all services",
       "type": "shell",
       "command": "./health.sh",
-      "detail": "Quick health check of Ollama, Qdrant, Redis, and project config",
+      "detail": "Quick health check of Ollama, Qdrant, Redis, Postgres, and project config",
       "problemMatcher": [],
       "presentation": {
         "echo": false, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
@@ -23,10 +23,80 @@
     },
 
     {
+      "label": "🐘 Postgres: Setup (create db and user)",
+      "type": "shell",
+      "command": "psql postgres -c \"CREATE USER qms_agent WITH PASSWORD 'changeme';\" -c \"CREATE DATABASE qms_agent OWNER qms_agent;\" -c \"GRANT ALL PRIVILEGES ON DATABASE qms_agent TO qms_agent;\"",
+      "detail": "Create the qms_agent database and user. Run once. Update POSTGRES_PASSWORD in .env to match.",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
+    {
+      "label": "🐘 Postgres: Start service",
+      "type": "shell",
+      "command": "brew services start postgresql@17",
+      "detail": "Start the Postgres service via brew",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    },
+    {
+      "label": "🐘 Postgres: Open psql",
+      "type": "shell",
+      "command": "psql -U qms_agent -d qms_agent",
+      "detail": "Open a psql shell to the qms_agent database",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    },
+
+    {
+      "label": "💾 Drizzle: Run migrations",
+      "type": "shell",
+      "command": "npm run db:migrate",
+      "detail": "Apply pending migrations to the Postgres database",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
+    {
+      "label": "💾 Drizzle: Generate migration",
+      "type": "shell",
+      "command": "npm run db:generate",
+      "detail": "Generate a new migration from changes in src/db/schema.ts",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
+    {
+      "label": "💾 Drizzle: Open Studio",
+      "type": "shell",
+      "command": "npm run db:studio",
+      "detail": "Open the Drizzle Studio browser-based schema inspector",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
+
+    {
+      "label": "🧪 Smoke: Test data plane",
+      "type": "shell",
+      "command": "npm run smoke:dataplane",
+      "detail": "Verify tiers, services, query records, and database all work end-to-end",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
+
+    {
       "label": "📥 Ingest: From QMS git repo",
       "type": "shell",
       "command": "npm run ingest:repo",
-      "detail": "Fetch QMS docs from the git repo in ingestion.json, convert formats, chunk, load into Qdrant",
+      "detail": "Fetch QMS docs from the git repo in ingestion.json, convert, chunk, load into Qdrant",
       "problemMatcher": [],
       "presentation": {
         "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
@@ -56,7 +126,7 @@
       "label": "🔄 Reingest: Clear + ingest from git",
       "type": "shell",
       "command": "npm run reset -- --yes && npm run ingest:repo",
-      "detail": "Clear the collection (no confirmation) and re-ingest from the git repo. For the iterate/clear cycle.",
+      "detail": "Clear the collection (no confirmation) and re-ingest from the git repo. For the iterate cycle.",
       "problemMatcher": [],
       "presentation": {
         "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
@@ -76,7 +146,17 @@
       "label": "🔍 Test: Retrieval",
       "type": "shell",
       "command": "npm run test-retrieval -- \"${input:searchQuery}\"",
-      "detail": "Run a semantic search against the qms_documents collection to verify ingestion quality",
+      "detail": "Run a semantic search against the qms_documents collection",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
+    {
+      "label": "💬 Ask: Query the RAG",
+      "type": "shell",
+      "command": "npm run ask -- \"${input:question}\"",
+      "detail": "Send a question to the RAG and get an answer with citations",
       "problemMatcher": [],
       "presentation": {
         "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
@@ -86,7 +166,7 @@
       "label": "🌐 Open: Qdrant dashboard",
       "type": "shell",
       "command": "open http://localhost:6333/dashboard",
-      "detail": "Open the Qdrant web UI in your browser to inspect chunks and metadata",
+      "detail": "Open the Qdrant web UI in your browser",
       "problemMatcher": [],
       "presentation": { "reveal": "silent", "panel": "shared" }
     },
@@ -95,7 +175,7 @@
       "label": "🤖 Agent: Run draft",
       "type": "shell",
       "command": "npm run agent",
-      "detail": "Run the drafting agent",
+      "detail": "Run the drafting agent (currently smoke test - will become real agent)",
       "problemMatcher": [],
       "presentation": {
         "reveal": "always", "panel": "dedicated", "clear": true
@@ -107,7 +187,7 @@
       "label": "🛑 Teardown: Stop services (keep data)",
       "type": "shell",
       "command": "./teardown.sh",
-      "detail": "Stop Ollama, Redis, Colima, and Qdrant. Data preserved.",
+      "detail": "Stop Ollama, Redis, Postgres, Colima, and Qdrant. Data preserved.",
       "problemMatcher": [],
       "presentation": {
         "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
@@ -118,7 +198,7 @@
       "type": "shell",
       "command": "./teardown.sh",
       "args": ["--purge"],
-      "detail": "Stop services AND delete Qdrant volume and Redis data. Asks for confirmation.",
+      "detail": "Stop services AND delete all data. Asks for confirmation.",
       "problemMatcher": [],
       "presentation": {
         "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
@@ -200,6 +280,12 @@
       "type": "promptString",
       "description": "Search query to test against the QMS collection",
       "default": "what is required for software safety classification"
+    },
+    {
+      "id": "question",
+      "type": "promptString",
+      "description": "Your question",
+      "default": "what are the columns in the risk register"
     }
   ]
 }

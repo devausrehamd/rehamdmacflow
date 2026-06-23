@@ -1,14 +1,7 @@
 # Brewfile for the QMS Agent project
-# Install everything in this file with:
-#   brew bundle
+# Install with: brew bundle
 #
-# This file is idempotent. Re-running it on a machine that already has
-# the packages does nothing.
-#
-# Note: Node.js is NOT managed via brew. Use nvm (Node Version Manager)
-# and the .nvmrc file at the project root. This avoids version conflicts
-# between projects and prevents Homebrew-related linking issues.
-# Install nvm: https://github.com/nvm-sh/nvm
+# Node.js is managed by nvm, not brew. See .nvmrc.
 
 # Core tooling
 brew "git"
@@ -17,10 +10,9 @@ brew "jq"
 # Local AI stack
 brew "ollama"
 brew "redis"
+brew "postgresql@17"
 
 # Container runtime (open source)
-# Colima provides a Docker-compatible daemon in a lightweight Linux VM.
-# The docker CLI is separate; both are required.
 brew "colima"
 brew "docker"
 

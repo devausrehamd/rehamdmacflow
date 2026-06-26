@@ -10,6 +10,8 @@ import { discoverFiles } from "./discover.js";
 import { convertFile } from "./converters.js";
 import { chunkDocument } from "./chunkers.js";
 import { QdrantWriter } from "./qdrant-writer.js";
+import { loadTable } from "../data/table-loader.js";
+import { defaultTierFor } from "../tiers.js";
 import type { IngestionConfig, IngestionStats, SourceConfig } from "./types.js";
 
 export async function loadConfig(configPath: string): Promise<IngestionConfig> {
@@ -39,6 +41,7 @@ export async function runIngestion(
     filesFailed: 0,
     totalChunks: 0,
     totalPoints: 0,
+    tablesLoaded: 0,
     errors: [],
     elapsedSeconds: 0,
   };
@@ -93,6 +96,39 @@ export async function runIngestion(
       );
       stats.filesConverted++;
 
+      // --- Structured tables -> SQL path ---
+      // For v1 every table goes to the "operations" tier. When tiers split,
+      // the tier would be derived from the source path or document metadata.
+      const tier = defaultTierFor("admin"); // ingestion runs as system/admin -> operations
+      for (const tableData of converted.tables) {
+        const loaded = await loadTable({
+          sourcePath: file.relativePath,
+          sourceSha256: file.sha256,
+          sheetName: tableData.sheetName,
+          tableIndex: tableData.tableIndex,
+          displayName: tableData.displayName,
+          tier,
+          headers: tableData.headers,
+          rows: tableData.rows,
+          extractionMethod: tableData.extractionMethod,
+          extractionConfidence: tableData.extractionConfidence,
+        });
+
+        // Embed the blurb so semantic search can discover the table
+        await writer.writeTableBlurb({
+          tableId: loaded.tableId,
+          blurb: loaded.blurb,
+          sourcePath: file.relativePath,
+          sourceSha: file.sha256,
+          displayName: loaded.displayName,
+          tier,
+        });
+
+        stats.tablesLoaded++;
+        console.log(`    table: ${loaded.displayName} -> ${loaded.rowCount} rows (${loaded.tableId.slice(0, 8)})`);
+      }
+
+      // --- Prose -> vector path (unchanged) ---
       const chunks = chunkDocument(converted, config.chunking);
       stats.totalChunks += chunks.length;
 
@@ -119,6 +155,7 @@ export function printStats(stats: IngestionStats): void {
   console.log(`  Files failed:     ${stats.filesFailed}`);
   console.log(`  Total chunks:     ${stats.totalChunks}`);
   console.log(`  Points in Qdrant: ${stats.totalPoints}`);
+  console.log(`  Tables -> SQL:    ${stats.tablesLoaded}`);
   console.log(`  Elapsed:          ${stats.elapsedSeconds.toFixed(1)}s`);
 
   if (stats.errors.length > 0) {

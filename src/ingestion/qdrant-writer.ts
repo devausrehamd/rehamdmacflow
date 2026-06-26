@@ -41,29 +41,6 @@ export class QdrantWriter {
         `Created collection ${this.config.collection} (dim=${this.dimension})`,
       );
     }
-    // Create payload indexes for fields we filter on. This is domain specific
-    // but generally we want to index anything we might use as a filter in a query.
-
-    const indexedFields: Array<[string, "keyword"]> = [
-      ["source_path", "keyword"],
-      ["source_extension", "keyword"],
-      ["approval_status", "keyword"],
-      ["sheet_name", "keyword"],
-    ];
-    for (const [field, schema] of indexedFields) {
-      try {
-        await this.client.createPayloadIndex(this.config.collection, {
-          field_name: field,
-          field_schema: schema,
-        });
-      } catch (err) {
-        // Index may already exist — that's fine
-        const message = err instanceof Error ? err.message : String(err);
-        if (!message.includes("already exists")) {
-          console.warn(`Could not create index on ${field}: ${message}`);
-        }
-      }
-    }
   }
 
   async writeDocument(doc: ConvertedDocument, chunks: DocumentChunk[]): Promise<number> {
@@ -108,6 +85,57 @@ export class QdrantWriter {
       },
     });
   }
+
+  /**
+   * Embed a table's blurb and upsert it as a special point. This is how
+   * semantic search discovers structured tables: a query like "risks in
+   * Project Summit" matches the blurb's prose, and the payload carries the
+   * table_id so the agent knows it can query exact values via the data API.
+   *
+   * The point id is derived from the table_id so re-ingesting overwrites
+   * cleanly rather than duplicating.
+   */
+  async writeTableBlurb(params: {
+    tableId: string;
+    blurb: string;
+    sourcePath: string;
+    sourceSha: string;
+    displayName: string;
+    tier: string;
+  }): Promise<void> {
+    const [vector] = await embedBatch([params.blurb]);
+    await this.client.upsert(this.config.collection, {
+      points: [
+        {
+          id: tableBlurbPointId(params.tableId),
+          vector,
+          payload: {
+            source_path: params.sourcePath,
+            source_sha256: params.sourceSha,
+            text: params.blurb,
+            // Markers that tell the agent this is a structured-table pointer
+            has_structured_table: true,
+            table_id: params.tableId,
+            table_display_name: params.displayName,
+            tier: params.tier,
+            ingested_at: new Date().toISOString(),
+            approval_status: "approved",
+          },
+        },
+      ],
+    });
+  }
+}
+
+function tableBlurbPointId(tableId: string): string {
+  const hash = createHash("sha256").update(`table-blurb::${tableId}`).digest("hex");
+  return [
+    hash.slice(0, 8),
+    hash.slice(8, 12),
+    hash.slice(12, 16),
+    hash.slice(16, 20),
+    hash.slice(20, 32),
+  ].join("-");
 }
 
 function makePointId(sourceSha: string, chunkIndex: number): string {

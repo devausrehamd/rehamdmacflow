@@ -165,30 +165,30 @@
       }
     },
     {
-      "label": "🧹 Clear: Qdrant collection",
+      "label": "🧹 Clear: Both stores (Qdrant + SQL)",
       "type": "shell",
-      "command": "npm run reset",
-      "detail": "Drop and recreate the qms_documents collection (asks for confirmation)",
+      "command": "npm run clear:all",
+      "detail": "Drop all SQL data tables, wipe the registry, and recreate the Qdrant collection. Asks for confirmation.",
       "problemMatcher": [],
       "presentation": {
         "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
       }
     },
     {
-      "label": "🔄 Reingest: Clear + ingest from git",
+      "label": "🔄 Reingest: Clear both + ingest from git",
       "type": "shell",
-      "command": "npm run reset -- --yes && npm run ingest:repo",
-      "detail": "Clear the collection (no confirmation) and re-ingest from the git repo. For the iterate cycle.",
+      "command": "npm run clear:all -- --yes && npm run ingest:repo",
+      "detail": "Clear Qdrant AND SQL (no confirmation), then re-ingest from the git repo. Handles documents and tables.",
       "problemMatcher": [],
       "presentation": {
         "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
       }
     },
     {
-      "label": "🔄 Reingest: Clear + ingest from local",
+      "label": "🔄 Reingest: Clear both + ingest from local",
       "type": "shell",
-      "command": "npm run reset -- --yes && npm run ingest",
-      "detail": "Clear the collection (no confirmation) and re-ingest from the local QMS_FOLDER",
+      "command": "npm run clear:all -- --yes && npm run ingest",
+      "detail": "Clear Qdrant AND SQL (no confirmation), then re-ingest from the local QMS_FOLDER",
       "problemMatcher": [],
       "presentation": {
         "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true

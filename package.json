@@ -14,6 +14,7 @@
     "test-retrieval": "tsx src/test-retrieval.ts",
     "ask": "tsx src/ask.ts",
     "reset": "tsx scripts/reset-collection.ts",
+    "clear:all": "tsx scripts/clear-all.ts",
     "seed": "tsx scripts/seed-project.ts",
     "create-admin": "tsx scripts/create-admin.ts",
     "smoke:dataplane": "tsx scripts/smoke-test-dataplane.ts",

@@ -62,6 +62,23 @@ export interface ConvertedDocument {
   markdown: string;
   convertedPath: string;
   metadata: Record<string, unknown>;
+  // Structured tables extracted from this document (xlsx sheets, docx tables).
+  // Empty for prose-only documents. These feed the SQL path; the markdown
+  // still feeds the vector path so prose around tables stays searchable.
+  tables: ExtractedTableData[];
+}
+
+// A table extracted from a document, ready to load into SQL. This mirrors
+// the ExtractedTable shape the loader consumes, minus the provenance fields
+// the pipeline fills in (sourcePath, sha, tier).
+export interface ExtractedTableData {
+  sheetName?: string | null;
+  tableIndex: number;
+  displayName: string;
+  headers: string[];
+  rows: unknown[][];
+  extractionMethod: string;
+  extractionConfidence: number;
 }
 
 export interface DocumentChunk {
@@ -81,6 +98,7 @@ export interface IngestionStats {
   filesFailed: number;
   totalChunks: number;
   totalPoints: number;
+  tablesLoaded: number;
   errors: Array<{ file: string; error: string }>;
   elapsedSeconds: number;
 }

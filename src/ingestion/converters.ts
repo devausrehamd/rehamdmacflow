@@ -12,6 +12,7 @@ import type {
   ConvertedDocument,
   ConversionStrategy,
 } from "./types.js";
+import { extractTables } from "./table-extract.js";
 
 export async function convertFile(
   file: SourceFile,
@@ -38,17 +39,30 @@ export async function convertFile(
       throw new Error(`Unknown handler: ${strategy.handler}`);
   }
 
-  // Write converted markdown to the conversion output directory
-  // mirroring the source's relative path
   const outputPath = join(outputRoot, `${file.relativePath}.md`);
   await mkdir(dirname(outputPath), { recursive: true });
   await writeFile(outputPath, markdown, "utf-8");
+
+  // Extract structured tables for the SQL path (xlsx sheets, docx tables).
+  // Returns [] for handlers that don't produce tables (passthrough, pdf).
+  // Extraction failures don't abort conversion - the markdown/vector path
+  // still works even if table extraction has trouble.
+  let tables;
+  try {
+    tables = await extractTables(file, strategy.handler);
+  } catch (err) {
+    console.warn(
+      `    table extraction failed for ${file.relativePath}: ${err instanceof Error ? err.message : err}`,
+    );
+    tables = [];
+  }
 
   return {
     sourceFile: file,
     markdown,
     convertedPath: outputPath,
     metadata,
+    tables,
   };
 }
 
@@ -71,8 +85,13 @@ async function convertXlsx(
   options: Record<string, unknown>,
 ): Promise<{ markdown: string; metadata: Record<string, unknown> }> {
   const preserveHeaders = options.preserveHeaders !== false;
+
+  // Read the file as a buffer and parse with XLSX.read.
+  // We avoid XLSX.readFile because it's not reliably exported in ESM
+  // contexts with the npm-distributed xlsx package.
   const buf = await readFile(file.absolutePath);
   const workbook = XLSX.read(buf, { type: "buffer" });
+
   const sheetSummaries: Array<{ name: string; rows: number; cols: number }> = [];
   const parts: string[] = [];
 
@@ -88,7 +107,6 @@ async function convertXlsx(
     parts.push(`# Sheet: ${sheetName}\n`);
     parts.push(`> ${rowCount} rows, ${colCount} columns\n`);
 
-    // Convert sheet to a 2D array of values
     const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
       header: 1,
       defval: "",
@@ -100,8 +118,6 @@ async function convertXlsx(
       continue;
     }
 
-    // Build a markdown table
-    // First row treated as header if preserveHeaders is true
     const headerRow = preserveHeaders ? rows[0] : null;
     const dataRows = preserveHeaders ? rows.slice(1) : rows;
 
@@ -114,7 +130,6 @@ async function convertXlsx(
     for (const row of dataRows) {
       const cells = row.map((c) => {
         const text = String(c ?? "").trim();
-        // Escape pipes and newlines to keep table syntax valid
         return text.replace(/\|/g, "\\|").replace(/\n/g, " ");
       });
       parts.push(`| ${cells.join(" | ")} |`);
@@ -136,9 +151,6 @@ async function convertPdf(
 ): Promise<{ markdown: string; metadata: Record<string, unknown> }> {
   const buf = await readFile(file.absolutePath);
   const data = await pdfParse(buf);
-  // pdf-parse returns plain text; we add a minimal markdown wrapper.
-  // For higher-quality PDF conversion you'd reach for unstructured or a
-  // dedicated layout-aware tool, but this is reasonable for text PDFs.
   const cleaned = data.text.replace(/\n{3,}/g, "\n\n").trim();
   return {
     markdown: cleaned,

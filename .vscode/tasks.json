@@ -91,6 +91,58 @@
         "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
       }
     },
+    {
+      "label": "🧪 Smoke: Test auth",
+      "type": "shell",
+      "command": "npm run smoke:auth",
+      "detail": "Verify password hashing, JWT, user CRUD, and refresh token storage",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
+    {
+      "label": "🧪 Smoke: Test agent",
+      "type": "shell",
+      "command": "npm run smoke:agent -- \"${input:agentQuestion}\"",
+      "detail": "Run the agent graph end-to-end without HTTP. Prompts for a question.",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
+    {
+      "label": "🧪 Smoke: Test tables (structured data)",
+      "type": "shell",
+      "command": "npm run smoke:tables",
+      "detail": "Verify type inference, SQL load, registry, and the structured query builder end-to-end",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
+
+    {
+      "label": "🔐 Auth: Create admin user",
+      "type": "shell",
+      "command": "npm run create-admin",
+      "detail": "Interactive prompt to bootstrap the first admin user",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
+    {
+      "label": "🌐 API: Start server",
+      "type": "shell",
+      "command": "npm run api",
+      "detail": "Start the Express API server on port 4000",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+      }
+    },
 
     {
       "label": "📥 Ingest: From QMS git repo",
@@ -285,6 +337,12 @@
       "id": "question",
       "type": "promptString",
       "description": "Your question",
+      "default": "what are the columns in the risk register"
+    },
+    {
+      "id": "agentQuestion",
+      "type": "promptString",
+      "description": "Question to send to the agent",
       "default": "what are the columns in the risk register"
     }
   ]

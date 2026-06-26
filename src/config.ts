@@ -39,6 +39,10 @@ const ConfigSchema = z.object({
     user: z.string().min(1),
     password: z.string().min(1),
     database: z.string().min(1),
+    // Read-only role for the data query API. Optional - falls back to the
+    // read-write credentials with a warning if unset.
+    readonlyUser: z.string().optional(),
+    readonlyPassword: z.string().optional(),
   }),
   api: z.object({
     port: z.number().int().positive(),
@@ -78,6 +82,8 @@ function loadConfig(): Config {
       user: process.env.POSTGRES_USER,
       password: process.env.POSTGRES_PASSWORD,
       database: process.env.POSTGRES_DATABASE,
+      readonlyUser: process.env.POSTGRES_READONLY_USER,
+      readonlyPassword: process.env.POSTGRES_READONLY_PASSWORD,
     },
     api: {
       port: Number(process.env.API_PORT ?? 4000),

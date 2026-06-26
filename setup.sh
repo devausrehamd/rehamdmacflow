@@ -18,6 +18,29 @@ info()  { echo -e "    $1"; }
 warn()  { echo -e "${YELLOW}WARN:${NC} $1"; }
 fail()  { echo -e "${RED}FAIL:${NC} $1" >&2; exit 1; }
 
+# Ensures psql is reachable on PATH, handling versioned formulae that
+# don't auto-link. Idempotent.
+ensure_postgres_linked() {
+    if command -v psql >/dev/null 2>&1; then
+        return 0
+    fi
+
+    info "psql not on PATH; attempting to link..."
+
+    for v in postgresql@17 postgresql@16 postgresql@18; do
+        if brew list "$v" >/dev/null 2>&1; then
+            info "Found $v installed; linking..."
+            brew link --force --overwrite "$v" 2>/dev/null || true
+            break
+        fi
+    done
+
+    if ! command -v psql >/dev/null 2>&1; then
+        fail "Could not link Postgres. Run 'brew link --force postgresql@17' manually."
+    fi
+    info "psql linked: $(psql --version)"
+}
+
 wait_for() {
     local description="$1"
     local cmd="$2"
@@ -48,14 +71,6 @@ if ! command -v brew >/dev/null 2>&1; then
     fail "Homebrew is not installed. Install from https://brew.sh and re-run."
 fi
 info "Homebrew detected"
-
-# postgresql@17 is keg-only, so its binaries (psql, pg_ctl, ...) are not
-# symlinked into the Homebrew bin dir. Put them on PATH for this script so
-# the connection checks below can find psql.
-if PG_BIN="$(brew --prefix postgresql@17 2>/dev/null)/bin" && [[ -d "$PG_BIN" ]]; then
-    export PATH="$PG_BIN:$PATH"
-    info "Added postgresql@17 to PATH ($PG_BIN)"
-fi
 
 if [[ ! -f Brewfile ]]; then
     fail "Brewfile not found in current directory. Run this script from the project root."
@@ -179,6 +194,8 @@ info "Qdrant API responding"
 # Step 6: Postgres database setup
 step "Setting up Postgres database and user"
 
+ensure_postgres_linked
+
 if ! wait_for "Postgres" "psql postgres -c 'SELECT 1' -t" 30; then
     fail "Postgres started but psql cannot connect after 30s. Check 'brew services list'."
 fi
@@ -217,6 +234,34 @@ fi
 psql postgres -c "GRANT ALL PRIVILEGES ON DATABASE qms_agent TO qms_agent" >/dev/null
 info "Privileges granted"
 
+# Read-only role for the data query API
+READONLY_PASS="changeme_readonly"
+if [[ -f .env ]]; then
+    ENV_RO_PASS=$(grep -E '^POSTGRES_READONLY_PASSWORD=' .env | head -1 | cut -d'=' -f2- || echo "")
+    if [[ -n "$ENV_RO_PASS" ]]; then
+        READONLY_PASS="$ENV_RO_PASS"
+    fi
+fi
+
+psql postgres -t -c "DO \$\$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'qms_readonly') THEN
+        CREATE USER qms_readonly WITH PASSWORD '$READONLY_PASS';
+        RAISE NOTICE 'Read-only role qms_readonly created';
+    ELSE
+        ALTER USER qms_readonly WITH PASSWORD '$READONLY_PASS';
+    END IF;
+END \$\$;" 2>&1 | grep -v "^$" | sed 's/^/    /'
+
+# Grant SELECT-only on the qms_agent database. ALTER DEFAULT PRIVILEGES
+# ensures future tables (the UUID data tables created at ingest time) are
+# also readable by the read-only role without re-granting each time.
+psql -d qms_agent -c "GRANT CONNECT ON DATABASE qms_agent TO qms_readonly" >/dev/null 2>&1 || true
+psql -d qms_agent -c "GRANT USAGE ON SCHEMA public TO qms_readonly" >/dev/null 2>&1 || true
+psql -d qms_agent -c "GRANT SELECT ON ALL TABLES IN SCHEMA public TO qms_readonly" >/dev/null 2>&1 || true
+psql -d qms_agent -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO qms_readonly" >/dev/null 2>&1 || true
+info "Read-only role configured with SELECT-only access"
+
 # Step 7: Project dependencies
 step "Installing Node project dependencies"
 
@@ -232,6 +277,22 @@ step "Environment configuration"
 
 if [[ -f .env ]]; then
     info ".env already exists; not overwriting"
+
+    # Check for required keys that may have been added in later versions of .env.example
+    REQUIRED_KEYS=("POSTGRES_HOST" "POSTGRES_USER" "POSTGRES_PASSWORD" "POSTGRES_DATABASE" "JWT_SECRET" "API_PORT")
+    MISSING_KEYS=()
+    for key in "${REQUIRED_KEYS[@]}"; do
+        if ! grep -q "^${key}=" .env; then
+            MISSING_KEYS+=("$key")
+        fi
+    done
+
+    if [[ ${#MISSING_KEYS[@]} -gt 0 ]]; then
+        warn ".env is missing required keys: ${MISSING_KEYS[*]}"
+        warn "Append them from .env.example, then re-run this script."
+        warn "  Example: tail -n +20 .env.example >> .env"
+        exit 1
+    fi
 elif [[ -f .env.example ]]; then
     cp .env.example .env
     info ".env created from .env.example"
@@ -252,6 +313,23 @@ fi
 step "Applying database migrations"
 
 if [[ -f drizzle.config.ts && -d drizzle && -d node_modules ]]; then
+    # Drizzle-kit needs meta/_journal.json to track migration state.
+    # If it doesn't exist, create it bootstrapped with all SQL files in drizzle/
+    if [[ ! -f drizzle/meta/_journal.json ]]; then
+        info "Creating drizzle/meta/_journal.json bootstrap..."
+        mkdir -p drizzle/meta
+        ENTRIES=""
+        IDX=0
+        for sql_file in drizzle/[0-9]*_*.sql; do
+            [[ -e "$sql_file" ]] || continue
+            TAG=$(basename "$sql_file" .sql)
+            if [[ -n "$ENTRIES" ]]; then ENTRIES+=","; fi
+            ENTRIES+="{\"idx\":$IDX,\"version\":\"7\",\"when\":$(($(date +%s)*1000)),\"tag\":\"$TAG\",\"breakpoints\":true}"
+            IDX=$((IDX+1))
+        done
+        echo "{\"version\":\"7\",\"dialect\":\"postgresql\",\"entries\":[$ENTRIES]}" > drizzle/meta/_journal.json
+    fi
+
     npm run db:migrate
     info "Migrations applied"
 else

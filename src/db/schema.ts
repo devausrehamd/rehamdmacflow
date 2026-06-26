@@ -158,11 +158,84 @@ export const audit_log = pgTable(
 );
 
 // ============================================================================
+// Table registry - maps extracted tables to their UUID-named SQL tables
+//
+// Every table extracted from a document (xlsx sheet, docx table, future
+// pdf/OCR table) gets a registry entry. The registry id IS the table's
+// UUID; the physical SQL table is named "tbl_" + the uuid hex (dashes
+// stripped, since SQL identifiers can't contain dashes or start with a
+// digit).
+//
+// The registry is the bridge between the human-meaningful identity of a
+// table and its unguessable physical name, and it carries the schema the
+// data API needs to validate queries.
+//
+// Future-proofing fields for the visual extraction pipeline (not used in
+// the xlsx/docx-only first build, but present so adding OCR later needs
+// no migration):
+//   extraction_method     - how the table was extracted
+//   extraction_confidence - 0..1 confidence; the loader gates on this
+//   source_region         - page/bbox provenance for OCR'd tables
+// ============================================================================
+
+export const table_registry = pgTable(
+  "table_registry",
+  {
+    // The UUID is both the registry key and the basis for the physical
+    // table name (tbl_<uuid_hex>).
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    // Provenance: which document, which version, which table within it
+    source_path: text("source_path").notNull(),
+    source_sha256: varchar("source_sha256", { length: 64 }).notNull(),
+    sheet_name: varchar("sheet_name", { length: 255 }),
+    table_index: integer("table_index").notNull().default(0),
+
+    // Human-meaningful identity
+    display_name: varchar("display_name", { length: 512 }).notNull(),
+
+    // Permission domain
+    tier: varchar("tier", { length: 32 }).notNull().default("operations"),
+
+    // Column definitions: array of { original, sql_name, type, nullable, sample_values }
+    column_schema: jsonb("column_schema").notNull(),
+
+    row_count: integer("row_count").notNull().default(0),
+
+    // The dual-purpose description: embedded into the vector store AND
+    // read by the LLM as the query manual
+    blurb: text("blurb").notNull(),
+
+    // Future-proofing for the visual/OCR pipeline
+    extraction_method: varchar("extraction_method", { length: 32 })
+      .notNull()
+      .default("xlsx_cells"),
+    extraction_confidence: integer("extraction_confidence").notNull().default(100),
+    source_region: jsonb("source_region"),
+
+    // Lifecycle: active | superseded
+    status: varchar("status", { length: 32 }).notNull().default("active"),
+    superseded_by: uuid("superseded_by"),
+
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    by_source: index("registry_source_idx").on(table.source_path),
+    by_status: index("registry_status_idx").on(table.status),
+    by_tier: index("registry_tier_idx").on(table.tier),
+    by_display: index("registry_display_idx").on(table.display_name),
+  }),
+);
+
+// ============================================================================
 // Inferred types - export for use in application code
 // ============================================================================
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+
+export type TableRegistryEntry = typeof table_registry.$inferSelect;
+export type NewTableRegistryEntry = typeof table_registry.$inferInsert;
 
 export type Draft = typeof drafts.$inferSelect;
 export type NewDraft = typeof drafts.$inferInsert;

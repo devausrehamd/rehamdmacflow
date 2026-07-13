@@ -36,9 +36,17 @@ import {
 import { requireAuth } from "./auth/middleware.js";
 import { askRouter } from "./routes/ask.js";
 import { dataRouter } from "./routes/data.js";
+import { custodyRouter } from "./routes/custody.js";
+import { reviewRouter } from "./routes/review.js";
+import { configureProvenanceSinks, provenanceSinksFromEnv } from "../custody/sink.js";
 
 export function createServer() {
   const app = express();
+
+  // Configure external provenance mirroring. If QMS_PROVENANCE_API_URL is set,
+  // every custody event is also POSTed to that durable service - the auditor's
+  // system of record, which outlives this ephemeral agent instance.
+  configureProvenanceSinks(provenanceSinksFromEnv());
 
   app.use(express.json({ limit: "10mb" }));
 
@@ -225,6 +233,8 @@ export function createServer() {
 
   app.use(askRouter);
   app.use(dataRouter);
+  app.use(custodyRouter);
+  app.use(reviewRouter);
 
   // 404 for unmatched routes
   app.use((req, res) => {

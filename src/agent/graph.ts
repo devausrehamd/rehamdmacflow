@@ -15,18 +15,24 @@
 
 import { StateGraph, START, END } from "@langchain/langgraph";
 import { AgentState } from "./state.js";
+import { understand } from "./nodes/understand.js";
 import { retrieve } from "./nodes/retrieve.js";
+import { sqlRetrieve } from "./nodes/sql-retrieve.js";
 import { draftPartials } from "./nodes/draft.js";
 import { reconcile } from "./nodes/reconcile.js";
 import { finalize } from "./nodes/finalize.js";
 
 const builder = new StateGraph(AgentState)
+  .addNode("understand", understand)
   .addNode("retrieve", retrieve)
+  .addNode("sql_retrieve", sqlRetrieve)
   .addNode("draft", draftPartials)
   .addNode("reconcile", reconcile)
   .addNode("finalize", finalize)
-  .addEdge(START, "retrieve")
-  .addEdge("retrieve", "draft")
+  .addEdge(START, "understand")
+  .addEdge("understand", "retrieve")
+  .addEdge("retrieve", "sql_retrieve")
+  .addEdge("sql_retrieve", "draft")
   .addEdge("draft", "reconcile")
   .addEdge("reconcile", "finalize")
   .addEdge("finalize", END);

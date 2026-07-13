@@ -1,0 +1,186 @@
+// src/agent/nodes/sql-retrieve.ts
+//
+// The hybrid retrieval node. Runs AFTER vector retrieve, BEFORE draft.
+//
+// Flow:
+//   1. Scan the retrieved chunks for table blurbs (has_structured_table)
+//   2. If none, pass through unchanged (pure vector path)
+//   3. LLM gate: does this question actually need exact data? (shouldQuerySql)
+//   4. For each table the gate selected:
+//        a. Fetch the table's schema from the data API
+//        b. Plan a structured query (LLM)
+//        c. Execute via the data API over HTTP
+//        d. On validation error, replan once with the error, execute again
+//        e. On success, record the result; on repeated failure, skip (prose
+//           still answers)
+//   5. SQL results go into state for the draft node to use as exact data
+//
+// Every SQL query goes through the real data API endpoint, authenticated as
+// the user, so tier permissions and audit logging apply uniformly.
+
+import { QueryRecord } from "../../queries.js";
+import type { AgentStateType, SqlResult } from "../state.js";
+import {
+  shouldQuerySql,
+  planQuery,
+  type AvailableTable,
+} from "../sql-planner.js";
+import { getTable, queryTable, DataApiError } from "../../data/client.js";
+import { appendEvent } from "../../custody/ledger.js";
+
+interface BlurbRef {
+  tableId: string;
+  displayName: string;
+  columnSummary: string;
+}
+
+/** Pull table-blurb references out of the retrieved chunks. */
+function findTableBlurbs(state: AgentStateType): BlurbRef[] {
+  const seen = new Map<string, BlurbRef>();
+  for (const chunks of Object.values(state.chunksByTier)) {
+    for (const chunk of chunks) {
+      if (chunk.has_structured_table && typeof chunk.table_id === "string") {
+        const id = chunk.table_id;
+        if (!seen.has(id)) {
+          seen.set(id, {
+            tableId: id,
+            displayName: String(chunk.table_display_name ?? "table"),
+            // The blurb text contains the column listing; we pass a trimmed
+            // version to the gate so it can judge relevance
+            columnSummary: extractColumnSummary(chunk.text),
+          });
+        }
+      }
+    }
+  }
+  return Array.from(seen.values());
+}
+
+/** Pull a short column summary out of a blurb's text for the gate prompt. */
+function extractColumnSummary(blurbText: string): string {
+  // The blurb lists columns as "  - name (type...): ..." lines. Grab the
+  // names and types compactly.
+  const lines = blurbText.split("\n").filter((l) => /^\s*-\s+\w+\s*\(/.test(l));
+  const cols = lines.map((l) => {
+    const m = l.match(/-\s+(\w+)\s*\(([^),]+)/);
+    return m ? `${m[1]} (${m[2].trim()})` : null;
+  });
+  return cols.filter(Boolean).join(", ");
+}
+
+export async function sqlRetrieve(state: AgentStateType): Promise<Partial<AgentStateType>> {
+  const { ctx, queryId, question, authToken } = state;
+
+  const blurbs = findTableBlurbs(state);
+  if (blurbs.length === 0) {
+    // No structured tables in the retrieved context - pure vector path
+    return {};
+  }
+
+  // Without a token the node cannot call the data API. This happens only if
+  // the caller forgot to thread the token through; degrade to vector-only.
+  if (!authToken) {
+    console.warn("sql-retrieve: no auth token in state, skipping SQL retrieval");
+    return {};
+  }
+
+  const queryRecord = await QueryRecord.load(ctx, queryId);
+
+  // --- Gate: does the question need exact data? ---
+  const available: AvailableTable[] = blurbs.map((b) => ({
+    tableId: b.tableId,
+    displayName: b.displayName,
+    columnSummary: b.columnSummary,
+  }));
+
+  const gate = await shouldQuerySql(question, available);
+  console.log(
+    `[sql-retrieve] gate decision: needsSql=${gate.needsSql}, tables=${JSON.stringify(gate.tableIds)}`,
+  );
+  if (!gate.needsSql) {
+    console.log(
+      `[sql-retrieve] gate declined - available tables were: ${JSON.stringify(available.map((a) => ({ id: a.tableId, cols: a.columnSummary })))}`,
+    );
+    return {};
+  }
+
+  // --- For each selected table: plan -> execute -> retry once ---
+  const sqlResults: Record<string, SqlResult> = {};
+
+  for (const tableId of gate.tableIds) {
+    try {
+      // Fetch the authoritative schema from the data API
+      const detail = await getTable(authToken, tableId);
+
+      // Plan the query
+      let queryReq = await planQuery(question, detail.columns);
+      console.log(`[sql-retrieve] planned query for ${tableId}: ${JSON.stringify(queryReq)}`);
+
+      // Execute, with one corrective retry on validation error
+      let result;
+      try {
+        result = await queryTable(authToken, tableId, queryReq);
+      } catch (err) {
+        if (err instanceof DataApiError && err.status === 400) {
+          console.log(`[sql-retrieve] query rejected (${err.message}), replanning...`);
+          // Replan with the error, try once more
+          queryReq = await planQuery(question, detail.columns, err.message);
+          console.log(`[sql-retrieve] replanned query: ${JSON.stringify(queryReq)}`);
+          result = await queryTable(authToken, tableId, queryReq);
+        } else {
+          throw err;
+        }
+      }
+
+      sqlResults[tableId] = {
+        tableId,
+        displayName: result.display_name,
+        executedSql: result.executed_sql,
+        rowCount: result.row_count,
+        rows: result.rows,
+      };
+      // Row COUNT only. stdout is not Langfuse: it reaches the terminal,
+      // container logs, and CI output - stores with no access list. The full
+      // rows belong in the trace span, which is access-controlled.
+      console.log(`[sql-retrieve] ${result.row_count} row(s) for ${tableId}`);
+
+      // Persist to the QueryRecord audit artifact (note: authToken is NOT
+      // written here - only the query and its results)
+      if (queryRecord) {
+        await queryRecord.appendSqlResult({
+          table_id: tableId,
+          display_name: result.display_name,
+          executed_sql: result.executed_sql,
+          row_count: result.row_count,
+        });
+      }
+
+      // Custody: record the query SHAPE, the executed SQL, and the row count -
+      // never the rows themselves (they may carry PII, and the chain is
+      // immutable). This is the "did it query, and get what it claims" evidence.
+      await appendEvent(
+        {
+          correlationId: ctx.correlationId,
+          runId: ctx.runId,
+          userId: ctx.user.id,
+          decisionId: ctx.decisionId,
+          policyHash: ctx.policyHash,
+        },
+        "sql_query",
+        {
+          tableId,
+          request: queryReq,
+          executedSql: result.executed_sql,
+          rowCount: result.row_count,
+        },
+      );
+    } catch (err) {
+      // This table failed planning or execution - skip it. The prose partial
+      // still answers; we just don't have exact data for this one.
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`sql-retrieve: table ${tableId} failed: ${message}`);
+    }
+  }
+
+  return { sqlResults };
+}

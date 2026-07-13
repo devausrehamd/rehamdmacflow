@@ -1,0 +1,30 @@
+{
+  "policyVersion": "0.1.0",
+  "description": "Translates a document's DECLARED classification into enforcement labels. Documents never name labels directly - renaming a label would otherwise mean re-issuing every controlled document.",
+
+  "strict": true,
+
+  "aliases": {
+    "stonefield semiconductors — internal": "internal",
+    "stonefield semiconductors - internal": "internal",
+    "internal": "internal",
+    "internal use only": "internal",
+    "public": "public",
+    "restricted": "restricted",
+    "company confidential": "restricted",
+    "confidential": "restricted"
+  },
+
+  "classifications": {
+    "public": { "labels": ["engineering:public"] },
+    "internal": { "labels": ["engineering:internal"] },
+    "restricted": { "labels": ["engineering:restricted"] }
+  },
+
+  "pathDefaults": [
+    { "match": "procedures/", "classification": "internal" },
+    { "match": "data/", "classification": "internal" }
+  ],
+
+  "overrides": []
+}

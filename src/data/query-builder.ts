@@ -67,6 +67,13 @@ export function buildQuery(
   const requireColumn = (name: string): ColumnSchema => {
     const col = schemaByName.get(name);
     if (!col) {
+      // Common LLM mistake: putting an aggregate expression where a column
+      // name belongs. Give a directive hint so the retry can self-correct.
+      if (/\b(count|sum|avg|min|max)\s*\(/i.test(name) || name === "count") {
+        throw new QueryValidationError(
+          `'${name}' is not a column. To aggregate, use the "aggregate" field instead, e.g. {"aggregate":{"fn":"count"}}. Do not put functions in "select" or "group_by". Valid columns: ${columns.map((c) => c.sql_name).join(", ")}`,
+        );
+      }
       throw new QueryValidationError(
         `Unknown column '${name}'. Valid columns: ${columns.map((c) => c.sql_name).join(", ")}`,
       );

@@ -8,7 +8,10 @@ import { syncGitSource } from "./git-source.js";
 import { syncLocalSource } from "./local-source.js";
 import { discoverFiles } from "./discover.js";
 import { convertFile } from "./converters.js";
-import { chunkDocument } from "./chunkers.js";
+import { chunkDocument, chunkDocumentStructured } from "./chunkers.js";
+import { resolveDocumentLabels } from "../identity/classification.js";
+import { parseFrontmatter } from "./frontmatter.js";
+import { resolveSubject, projectDisplayName } from "../data/subject.js";
 import { QdrantWriter } from "./qdrant-writer.js";
 import { loadTable } from "../data/table-loader.js";
 import { defaultTierFor } from "../tiers.js";
@@ -89,12 +92,45 @@ export async function runIngestion(
       }
 
       console.log(`  [${file.extension}] ${file.relativePath}`);
+
+      // Resolve the document's enforcement labels ONCE, before anything is
+      // written. Both the prose chunks and the table blurb inherit them.
+      // A document that declares nothing and matches no path default gets no
+      // labels and is invisible under enforcement - fail closed by design.
       const converted = await convertFile(
         file,
         strategy,
         config.conversion.outputPath,
       );
       stats.filesConverted++;
+
+      // What did the document declare about itself? The source varies by
+      // format; the resolution does not.
+      //   xlsx -> the Metadata sheet's Classification row (via the legend)
+      //   md   -> YAML frontmatter
+      //   docx -> nothing yet; falls through to a path default
+      const declared =
+        converted.tables.find((t) => t.legend?.declaredClassification)?.legend
+          ?.declaredClassification ??
+        (file.extension === ".md" ? parseFrontmatter(converted.markdown).declaredClassification : null);
+
+      const docLabels = resolveDocumentLabels(file.relativePath, declared);
+      console.log(
+        `    labels: [${docLabels.labels.join(", ") || "NONE"}]` +
+          ` (${docLabels.rule}${docLabels.classification ? `: ${docLabels.classification}` : ""})`,
+      );
+
+      // What is this document ABOUT, and what KIND of form is it? Resolved from
+      // the same metadata sheet the classification came from. Both nullable and
+      // both fail closed: no project satisfies no prerequisite, no collection
+      // joins no aggregate.
+      const metadataFields =
+        converted.tables.find((t) => t.legend?.metadataFields)?.legend?.metadataFields ??
+        (file.extension === ".md" ? parseFrontmatter(converted.markdown).fields : {});
+      const subject = resolveSubject(metadataFields);
+      console.log(
+        `    project: ${subject.project ?? "NONE"}   collection: ${subject.collection ?? "NONE"}`,
+      );
 
       // --- Structured tables -> SQL path ---
       // For v1 every table goes to the "operations" tier. When tiers split,
@@ -112,6 +148,11 @@ export async function runIngestion(
           rows: tableData.rows,
           extractionMethod: tableData.extractionMethod,
           extractionConfidence: tableData.extractionConfidence,
+          legend: tableData.legend,
+          accessLabels: docLabels.labels,
+          project: subject.project,
+          collection: subject.collection,
+          projectDisplayName: subject.project ? projectDisplayName(subject.project) : null,
         });
 
         // Embed the blurb so semantic search can discover the table
@@ -122,25 +163,64 @@ export async function runIngestion(
           sourceSha: file.sha256,
           displayName: loaded.displayName,
           tier,
+          accessLabels: docLabels.labels,
+          project: subject.project,
+          collection: subject.collection,
         });
 
         stats.tablesLoaded++;
         console.log(`    table: ${loaded.displayName} -> ${loaded.rowCount} rows (${loaded.tableId.slice(0, 8)})`);
       }
 
-      // --- Prose -> vector path (unchanged) ---
-      const chunks = chunkDocument(converted, config.chunking);
+      // --- Prose -> vector path ---
+      // Use the structured-aware chunker so that, when the structured strategy
+      // is active, we also get the section map to write to Postgres.
+      const { chunks, sections } = chunkDocumentStructured(converted, config.chunking);
       stats.totalChunks += chunks.length;
 
-      const pointsWritten = await writer.writeDocument(converted, chunks);
+      const pointsWritten = await writer.writeDocument(converted, chunks, docLabels.labels, {
+        project: subject.project,
+        collection: subject.collection,
+      });
       stats.totalPoints += pointsWritten;
-      console.log(`    -> ${chunks.length} chunks, ${pointsWritten} points`);
+
+      // Write the structural map (if any) to Postgres.
+      let sectionNote = "";
+      if (sections.length > 0) {
+        const { writeSections } = await import("./sections-writer.js");
+        const n = await writeSections(sections, converted.sourceFile.relativePath);
+        sectionNote = `, ${n} sections`;
+      }
+      console.log(`    -> ${chunks.length} chunks, ${pointsWritten} points${sectionNote}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       stats.filesFailed++;
       stats.errors.push({ file: file.relativePath, error: message });
       console.error(`    FAILED: ${message}`);
     }
+  }
+
+  // Step 5: Prune artifacts for source files that no longer exist.
+  //
+  // Re-ingesting a file replaces it (deleteByPath above). A file DELETED from
+  // the repo is never visited, so its chunks, blurb, tbl_, registry row, and
+  // structural-map rows would linger forever - and the table lane guarantees
+  // a stale blurb would be retrieved. Prune closes that gap.
+  console.log("\n=== Stage 5: Prune removed sources ===");
+  const livePaths = files.map((f) => f.relativePath);
+  const { pruneRemovedSources } = await import("./prune.js");
+  const pruneStats = await pruneRemovedSources(
+    writer.qdrantClient,
+    writer.collectionName,
+    livePaths,
+  );
+  if (pruneStats.prunedPaths.length > 0 || pruneStats.tablesSuperseded > 0) {
+    console.log(
+      `  superseded ${pruneStats.tablesSuperseded} table(s), removed ${pruneStats.sectionsDeleted} section map(s)`,
+    );
+    for (const p of pruneStats.prunedPaths) console.log(`    - ${p}`);
+  } else {
+    console.log("  nothing to prune.");
   }
 
   stats.elapsedSeconds = (Date.now() - startTime) / 1000;

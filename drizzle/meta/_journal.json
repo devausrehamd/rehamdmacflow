@@ -15,6 +15,55 @@
       "when": 1718760001000,
       "tag": "0001_table_registry",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1718760002000,
+      "tag": "0002_draft_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1718760003000,
+      "tag": "0003_live_source_registry",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1718760004000,
+      "tag": "0004_document_sections",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1718760005000,
+      "tag": "0005_access_labels",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1718760006000,
+      "tag": "0006_subject_and_collection",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1718760007000,
+      "tag": "0007_custody_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1718760008000,
+      "tag": "0008_draft_typed_rows",
+      "breakpoints": true
     }
   ]
 }

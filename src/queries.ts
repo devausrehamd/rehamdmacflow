@@ -33,6 +33,7 @@ export type QueryKind = "ask" | "draft";
 export interface RetrievedChunk {
   id: string;
   text: string;
+  access_labels?: string[];
   score: number;
   source_path?: string;
   source_extension?: string;
@@ -51,6 +52,14 @@ export interface TierResult {
   partial_latency_ms?: number;
 }
 
+export interface SqlResultRecord {
+  table_id: string;
+  display_name: string;
+  executed_sql: string;
+  row_count: number;
+  queried_at: string;
+}
+
 export interface QueryRecordData {
   id: string;
   kind: QueryKind;
@@ -66,6 +75,10 @@ export interface QueryRecordData {
   expires_at: string;
   status: QueryStatus;
   tiers: Record<string, TierResult>;
+  // SQL retrieval results (hybrid retrieval). Each entry records a query the
+  // agent ran against a structured table, for the audit trail. Note the
+  // executed SQL is recorded but not the auth token used to run it.
+  sql_results?: SqlResultRecord[];
   final_answer?: string;
   reconciliation_generated_at?: string;
   reconciliation_latency_ms?: number;
@@ -205,6 +218,19 @@ export class QueryRecord {
     this.data.status = "failed";
     this.data.error = message;
     this.data.total_latency_ms = Date.now() - new Date(this.data.created_at).getTime();
+    await this.save();
+  }
+
+  /** Record a SQL query the agent ran during hybrid retrieval (audit trail).
+   * Stores the executed SQL and row count, never the auth token used. */
+  async appendSqlResult(result: Omit<SqlResultRecord, "queried_at">): Promise<void> {
+    if (!this.data.sql_results) {
+      this.data.sql_results = [];
+    }
+    this.data.sql_results.push({
+      ...result,
+      queried_at: new Date().toISOString(),
+    });
     await this.save();
   }
 

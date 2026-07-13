@@ -1,0 +1,103 @@
+{
+  "documentType": "capa",
+  "displayName": "Corrective and Preventive Action",
+  "version": "1.0.0",
+  "aliases": [
+    "capa",
+    "corrective and preventive action",
+    "corrective action",
+    "capa report"
+  ],
+  "reviewThreshold": 0.8,
+  "requires": [],
+  "exports": {},
+  "criteria": [
+    {
+      "id": "no_fabricated_citations",
+      "criterion": "No regulatory clause, standard, or procedure is cited unless it appears in the retrieved sources. Fabricated or hallucinated references fail this criterion.",
+      "explanation": "",
+      "weight": 10,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output"
+    },
+    {
+      "id": "root_cause_substantive",
+      "criterion": "A root-cause analysis section is present and provides genuine analysis, not a restatement of the problem.",
+      "explanation": "",
+      "weight": 10,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output"
+    },
+    {
+      "id": "no_unsupported_numbers",
+      "criterion": "Every specific figure, count, or measurement in the document traces to the retrieved data or SQL results. Invented numbers fail this criterion.",
+      "explanation": "",
+      "weight": 10,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output"
+    },
+    {
+      "id": "completeness",
+      "criterion": "Contains all required CAPA sections: problem statement, root-cause analysis, corrective action, preventive action, and verification plan.",
+      "explanation": "",
+      "weight": 30,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output"
+    },
+    {
+      "id": "grounding",
+      "criterion": "Factual claims are supported by the retrieved sources and the exact data provided.",
+      "explanation": "",
+      "weight": 30,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output"
+    },
+    {
+      "id": "clarity",
+      "criterion": "Written clearly and unambiguously, appropriate for a controlled quality document.",
+      "explanation": "",
+      "weight": 20,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output"
+    },
+    {
+      "id": "citations",
+      "criterion": "References procedures, records, and data using correct identifiers.",
+      "explanation": "",
+      "weight": 20,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output"
+    }
+  ],
+  "trajectory": {
+    "description": "Provenance checks against the recorded retrieval trajectory.",
+    "requiredSources": [
+      {
+        "id": "capa_procedure",
+        "match": "procedures/CAPA",
+        "reason": "CAPA drafts must be grounded in the controlled CAPA procedure."
+      }
+    ],
+    "forbiddenSources": [
+      {
+        "id": "no_unapproved_drafts",
+        "match": "drafts/",
+        "reason": "Drafts must not be grounded in unapproved draft material."
+      }
+    ]
+  }
+}

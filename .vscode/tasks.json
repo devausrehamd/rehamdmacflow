@@ -2,281 +2,650 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "🚀 Install: Full stack setup",
+      "label": "\ud83d\ude80 Install: Full stack setup",
       "type": "shell",
       "command": "./setup.sh",
       "detail": "Run setup.sh - installs brew packages, pulls Ollama models, starts services",
       "problemMatcher": [],
       "presentation": {
-        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
       }
     },
     {
-      "label": "🩺 Status: Check all services",
+      "label": "\ud83e\ude7a Status: Check all services",
       "type": "shell",
       "command": "./health.sh",
       "detail": "Quick health check of Ollama, Qdrant, Redis, Postgres, and project config",
       "problemMatcher": [],
       "presentation": {
-        "echo": false, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+        "echo": false,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
       }
     },
-
     {
-      "label": "🐘 Postgres: Setup (create db and user)",
+      "label": "\ud83d\udc18 Postgres: Setup (create db and user)",
       "type": "shell",
       "command": "psql postgres -c \"CREATE USER qms_agent WITH PASSWORD 'changeme';\" -c \"CREATE DATABASE qms_agent OWNER qms_agent;\" -c \"GRANT ALL PRIVILEGES ON DATABASE qms_agent TO qms_agent;\"",
       "detail": "Create the qms_agent database and user. Run once. Update POSTGRES_PASSWORD in .env to match.",
       "problemMatcher": [],
       "presentation": {
-        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
       }
     },
     {
-      "label": "🐘 Postgres: Start service",
+      "label": "\ud83d\udc18 Postgres: Start service",
       "type": "shell",
       "command": "brew services start postgresql@17",
       "detail": "Start the Postgres service via brew",
       "problemMatcher": [],
-      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
     },
     {
-      "label": "🐘 Postgres: Open psql",
+      "label": "\ud83d\udc18 Postgres: Open psql",
       "type": "shell",
       "command": "psql -U qms_agent -d qms_agent",
       "detail": "Open a psql shell to the qms_agent database",
       "problemMatcher": [],
-      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
-    },
-
-    {
-      "label": "💾 Drizzle: Run migrations",
-      "type": "shell",
-      "command": "npm run db:migrate",
-      "detail": "Apply pending migrations to the Postgres database",
-      "problemMatcher": [],
       "presentation": {
-        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
       }
     },
     {
-      "label": "💾 Drizzle: Generate migration",
+      "label": "\u2705 Check: Migrations wired to journal",
+      "type": "shell",
+      "command": "for m in drizzle/0*.sql; do t=$(basename $m .sql); grep -q $t drizzle/meta/_journal.json && echo OK   $t || { echo MISSING from journal: $t; exit 1; }; done; echo; echo All migrations wired.",
+      "detail": "Every drizzle/*.sql must have an entry in meta/_journal.json or db:migrate silently skips it. Exits non-zero on a gap, so it can gate the reindex chain.",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "focus": false,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\ud83d\udcbe Drizzle: Run migrations",
+      "type": "shell",
+      "command": "npm run db:migrate",
+      "detail": "Apply pending migrations to the Postgres database",
+      "dependsOn": [
+        "\u2705 Check: Migrations wired to journal"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\ud83d\udcbe Drizzle: Generate migration",
       "type": "shell",
       "command": "npm run db:generate",
       "detail": "Generate a new migration from changes in src/db/schema.ts",
       "problemMatcher": [],
       "presentation": {
-        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
       }
     },
     {
-      "label": "💾 Drizzle: Open Studio",
+      "label": "\ud83d\udcbe Drizzle: Open Studio",
       "type": "shell",
       "command": "npm run db:studio",
       "detail": "Open the Drizzle Studio browser-based schema inspector",
       "isBackground": true,
       "problemMatcher": [],
       "presentation": {
-        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
       }
     },
-
     {
-      "label": "🧪 Smoke: Test data plane",
+      "label": "\ud83e\uddea Smoke: Test data plane",
       "type": "shell",
       "command": "npm run smoke:dataplane",
       "detail": "Verify tiers, services, query records, and database all work end-to-end",
       "problemMatcher": [],
       "presentation": {
-        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
       }
     },
     {
-      "label": "🧪 Smoke: Test auth",
+      "label": "\ud83e\uddea Smoke: Test auth",
       "type": "shell",
       "command": "npm run smoke:auth",
       "detail": "Verify password hashing, JWT, user CRUD, and refresh token storage",
       "problemMatcher": [],
       "presentation": {
-        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
       }
     },
     {
-      "label": "🧪 Smoke: Test agent",
+      "label": "\ud83e\uddea Smoke: Test agent",
       "type": "shell",
       "command": "npm run smoke:agent -- \"${input:agentQuestion}\"",
       "detail": "Run the agent graph end-to-end without HTTP. Prompts for a question.",
       "problemMatcher": [],
       "presentation": {
-        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
       }
     },
     {
-      "label": "🧪 Smoke: Test tables (structured data)",
+      "label": "\ud83e\uddea Smoke: Test tables (structured data)",
       "type": "shell",
       "command": "npm run smoke:tables",
       "detail": "Verify type inference, SQL load, registry, and the structured query builder end-to-end",
       "problemMatcher": [],
       "presentation": {
-        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
       }
     },
-
     {
-      "label": "🔐 Auth: Create admin user",
+      "label": "\ud83e\uddea Smoke: Test hybrid retrieval",
+      "type": "shell",
+      "command": "npm run smoke:hybrid",
+      "detail": "End-to-end: agent queries SQL via the data API and exact data reaches the answer",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\ud83e\uddea Smoke: Test rubrics + draft schema",
+      "type": "shell",
+      "command": "npm run smoke:rubrics",
+      "detail": "Validate the three-category rubric loader, content hashing, and the draft_sets/documents/rounds/issues round-trip",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\ud83e\uddea Smoke: Test live sources",
+      "type": "shell",
+      "command": "npm run smoke:live",
+      "detail": "Validate live-source descriptors, registry round-trip, and that the endpoint never leaks into the discovery blurb prose",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\ud83e\uddea Smoke: Test XLSX register write",
+      "type": "shell",
+      "command": "npm run smoke:xlsx",
+      "detail": "Unit-test the deterministic register merge: append, update, version-before-write, atomic rename, locked-file and column-mapping rejection. No LLM, no DB.",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\ud83e\uddea Smoke: Test subject scoping + enumeration",
+      "type": "shell",
+      "command": "npm run smoke:subject",
+      "detail": "Project/collection resolution from document metadata, and registry ENUMERATION of a collection with coverage reporting. Fixes the table lane's silent under-coverage of 'across all X' questions. Needs Postgres only.",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\ud83e\uddf5 Smoke: Test section validator (the cut panels)",
+      "type": "shell",
+      "command": "npm run smoke:section",
+      "detail": "Deterministic gate before the LLM: validates a produced document section against its declared schema. Recomputes RPN, marks missing fields insufficient_evidence, rejects out-of-scale ratings, flags ungrounded values and fabricated cross-references. Pure - no LLM, no DB.",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\u2696\ufe0f Smoke: Test rubric scoring (weighted binary + gates)",
+      "type": "shell",
+      "command": "npm run smoke:scoring",
+      "detail": "Deterministic aggregation of per-criterion PASS/FAIL into weighted score, critical-gate decision, and approval outcome. Includes the anti-fabrication pattern pre-check (was EAR99, prior CDR). The LLM never sees the weights. Pure - no LLM, no DB.",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\ud83e\udea1 Smoke: Test recipe executor (stub handlers)",
+      "type": "shell",
+      "command": "npm run smoke:executor",
+      "detail": "The deterministic recipe interpreter end to end with stubs: DAG validation, step ordering, output threading, one custody event per step, gap -> reviewRequired, critical gate -> block, halt at human gate. Postgres only, no Ollama.",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\ud83e\udde5 Draft: Generate a DFMEA end-to-end (needs Ollama)",
+      "type": "shell",
+      "command": "npm run smoke:draft-e2e",
+      "detail": "REAL generation: runs the actual LLM through the recipe to produce a DFMEA failure-modes section, validates and judges it, and reports quality (rows, grounded vs insufficient_evidence, fabrication catches, rubric score, custody chain). Needs Postgres + Ollama.",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\ud83d\udd12 Smoke: Test SECURITY (label enforcement)",
+      "type": "shell",
+      "command": "npm run smoke:security",
+      "detail": "Proves the filter EXCLUDES: a restricted chunk is never returned to a caller lacking the label, an unlabelled point is invisible to everyone, and the table lane obeys the same filter. Uses an isolated collection.",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\ud83d\udcdc Smoke: Test custody ledger",
+      "type": "shell",
+      "command": "npm run smoke:custody",
+      "detail": "Append-only hash-chained custody ledger: chaining, tamper detection, the self-verifying dossier, and signature anchoring. Proves a modified record breaks the chain. Needs Postgres only.",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\ud83d\udcdc Smoke: Test custody END-TO-END (HTTP /ask -> /custody)",
+      "type": "shell",
+      "command": "npm run smoke:custody:e2e",
+      "detail": "Full stack: POST /ask over HTTP, capture the correlation id, GET /custody/:id, and assert the chain contains run_started -> retrieval -> sql_query -> run_completed and self-verifies. Needs Postgres, Qdrant, Ollama, Redis.",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\ud83e\uddea Smoke: Test identity + entitlements",
+      "type": "shell",
+      "command": "npm run smoke:identity",
+      "detail": "Validate the entitlement seam: domain-scoped labels, per-subject grants, fail-closed on every error path, and decision provenance",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\ud83d\udcca Langfuse: Start",
+      "type": "shell",
+      "command": "docker compose -f docker-compose.langfuse.yml up -d",
+      "detail": "Start the self-hosted Langfuse tracing stack (web, worker, postgres, clickhouse, redis, minio)",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\ud83d\udcca Langfuse: Stop",
+      "type": "shell",
+      "command": "docker compose -f docker-compose.langfuse.yml down",
+      "detail": "Stop the Langfuse stack (data preserved in volumes)",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\ud83d\udcca Langfuse: Open dashboard",
+      "type": "shell",
+      "command": "open http://localhost:3000",
+      "detail": "Open the Langfuse web UI. CONTROLLED TOOL: traces contain retrieved chunk text, so its access list is the top clearance list.",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "\ud83d\udcca Langfuse: Tail logs",
+      "type": "shell",
+      "command": "docker compose -f docker-compose.langfuse.yml logs -f",
+      "detail": "Follow the Langfuse stack logs (useful while it boots and runs migrations)",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\ud83d\udd10 Auth: Create admin user",
       "type": "shell",
       "command": "npm run create-admin",
       "detail": "Interactive prompt to bootstrap the first admin user",
       "problemMatcher": [],
       "presentation": {
-        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
       }
     },
     {
-      "label": "🌐 API: Start server",
+      "label": "\ud83c\udf10 API: Start server",
       "type": "shell",
       "command": "npm run api",
-      "detail": "Start the Express API server on port 4000",
+      "detail": "Start the Express API server on port 4000. Label enforcement OFF unless QMS_ENFORCE_LABELS=true.",
       "isBackground": true,
       "problemMatcher": [],
       "presentation": {
-        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
       }
     },
-
     {
-      "label": "📥 Ingest: From QMS git repo",
+      "label": "\ud83d\udd12 API: Start server WITH label enforcement",
       "type": "shell",
-      "command": "npm run ingest:repo",
-      "detail": "Fetch QMS docs from the git repo in ingestion.json, convert, chunk, load into Qdrant",
+      "command": "QMS_ENFORCE_LABELS=true npm run api",
+      "detail": "Start the API with access-label filtering active. ONLY after a reindex has written labels - Qdrant excludes points lacking access_labels, so enforcing before labels exist blacks out the corpus.",
+      "isBackground": true,
       "problemMatcher": [],
       "presentation": {
-        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
       }
     },
     {
-      "label": "📥 Ingest: From local QMS_FOLDER",
+      "label": "\ud83d\udd04 Reindex: Full rebuild from git (clear all + ingest)",
       "type": "shell",
-      "command": "npm run ingest",
-      "detail": "Ingest from the local folder specified by QMS_FOLDER in .env",
+      "command": "npm run reindex -- --yes",
+      "detail": "Atomic: clears ALL stores (SQL tables + registry + Qdrant) and re-ingests from the git repo. Runs migrations first - schema.ts and the physical database must move together.",
+      "dependsOn": [
+        "\ud83d\udcbe Drizzle: Run migrations"
+      ],
+      "dependsOrder": "sequence",
       "problemMatcher": [],
       "presentation": {
-        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
       }
     },
     {
-      "label": "🧹 Clear: Both stores (Qdrant + SQL)",
+      "label": "\ud83d\udd04 Reindex: Full rebuild from local QMS_FOLDER",
+      "type": "shell",
+      "command": "npm run reindex -- --yes --local",
+      "detail": "Atomic: clears ALL stores and re-ingests from the local QMS_FOLDER. Runs migrations first.",
+      "dependsOn": [
+        "\ud83d\udcbe Drizzle: Run migrations"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\ud83d\udce1 Ingest: Live-source descriptors only",
+      "type": "shell",
+      "command": "npm run ingest:live",
+      "detail": "Register live-source descriptors from live-sources/ and write their discovery blurbs. The DATA is never ingested - only a pointer. Also runs as part of Reindex.",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\ud83e\uddf9 Clear: All stores (no re-ingest)",
       "type": "shell",
       "command": "npm run clear:all",
-      "detail": "Drop all SQL data tables, wipe the registry, and recreate the Qdrant collection. Asks for confirmation.",
+      "detail": "Clear ALL stores (SQL tables + registry + Qdrant vectors) without re-ingesting. Asks for confirmation. Normally use Reindex instead.",
       "problemMatcher": [],
       "presentation": {
-        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
       }
     },
     {
-      "label": "🔄 Reingest: Clear both + ingest from git",
-      "type": "shell",
-      "command": "npm run clear:all -- --yes && npm run ingest:repo",
-      "detail": "Clear Qdrant AND SQL (no confirmation), then re-ingest from the git repo. Handles documents and tables.",
-      "problemMatcher": [],
-      "presentation": {
-        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
-      }
-    },
-    {
-      "label": "🔄 Reingest: Clear both + ingest from local",
-      "type": "shell",
-      "command": "npm run clear:all -- --yes && npm run ingest",
-      "detail": "Clear Qdrant AND SQL (no confirmation), then re-ingest from the local QMS_FOLDER",
-      "problemMatcher": [],
-      "presentation": {
-        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
-      }
-    },
-    {
-      "label": "🔍 Test: Retrieval",
-      "type": "shell",
-      "command": "npm run test-retrieval -- \"${input:searchQuery}\"",
-      "detail": "Run a semantic search against the qms_documents collection",
-      "problemMatcher": [],
-      "presentation": {
-        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
-      }
-    },
-    {
-      "label": "💬 Ask: Query the RAG",
+      "label": "\ud83d\udcac Ask: Query the RAG",
       "type": "shell",
       "command": "npm run ask -- \"${input:question}\"",
       "detail": "Send a question to the RAG and get an answer with citations",
       "problemMatcher": [],
       "presentation": {
-        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
       }
     },
     {
-      "label": "🌐 Open: Qdrant dashboard",
+      "label": "\ud83d\udd27 Qdrant: Ensure payload indexes",
+      "type": "shell",
+      "command": "npm run ensure-indexes",
+      "detail": "Create payload indexes on the existing collection: has_structured_table, has_live_source, source_path, tier, section_id, parent_section_id, access_labels. Without access_labels the authorisation filter cannot run.",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "\ud83c\udf10 Open: Qdrant dashboard",
       "type": "shell",
       "command": "open http://localhost:6333/dashboard",
       "detail": "Open the Qdrant web UI in your browser",
       "problemMatcher": [],
-      "presentation": { "reveal": "silent", "panel": "shared" }
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      }
     },
-
     {
-      "label": "🤖 Agent: Run draft",
+      "label": "\ud83e\udd16 Agent: Run draft",
       "type": "shell",
       "command": "npm run agent",
       "detail": "Run the drafting agent (currently smoke test - will become real agent)",
       "problemMatcher": [],
       "presentation": {
-        "reveal": "always", "panel": "dedicated", "clear": true
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
       },
-      "group": { "kind": "build", "isDefault": true }
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
     },
-
     {
-      "label": "🛑 Teardown: Stop services (keep data)",
+      "label": "\ud83d\uded1 Teardown: Stop services (keep data)",
       "type": "shell",
       "command": "./teardown.sh",
       "detail": "Stop Ollama, Redis, Postgres, Colima, and Qdrant. Data preserved.",
       "problemMatcher": [],
       "presentation": {
-        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
       }
     },
     {
-      "label": "💥 Teardown: Purge all data",
+      "label": "\ud83d\udca5 Teardown: Purge all data",
       "type": "shell",
       "command": "./teardown.sh",
-      "args": ["--purge"],
+      "args": [
+        "--purge"
+      ],
       "detail": "Stop services AND delete all data. Asks for confirmation.",
       "problemMatcher": [],
       "presentation": {
-        "echo": true, "reveal": "always", "focus": true, "panel": "dedicated", "clear": true
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
       }
     },
-
     {
       "label": "Ollama: Restart",
       "type": "shell",
       "command": "brew services restart ollama",
       "problemMatcher": [],
-      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
     },
     {
       "label": "Ollama: List models",
       "type": "shell",
       "command": "ollama list",
       "problemMatcher": [],
-      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
     },
     {
       "label": "Qdrant: Restart container",
       "type": "shell",
       "command": "docker restart qdrant",
       "problemMatcher": [],
-      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
     },
     {
       "label": "Qdrant: Tail logs",
@@ -284,37 +653,58 @@
       "command": "docker logs -f qdrant",
       "isBackground": true,
       "problemMatcher": [],
-      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
     },
     {
       "label": "Redis: Restart",
       "type": "shell",
       "command": "brew services restart redis",
       "problemMatcher": [],
-      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
     },
     {
       "label": "Redis: Open CLI",
       "type": "shell",
       "command": "redis-cli",
       "problemMatcher": [],
-      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
     },
-
     {
       "label": "TypeScript: Type check",
       "type": "shell",
       "command": "npm run typecheck",
-      "problemMatcher": ["$tsc"],
-      "presentation": { "reveal": "silent", "panel": "shared" },
+      "problemMatcher": [
+        "$tsc"
+      ],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      },
       "group": "test"
     },
     {
       "label": "Lint: ESLint",
       "type": "shell",
       "command": "npm run lint",
-      "problemMatcher": ["$eslint-stylish"],
-      "presentation": { "reveal": "silent", "panel": "shared" },
+      "problemMatcher": [
+        "$eslint-stylish"
+      ],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      },
       "group": "test"
     },
     {
@@ -322,17 +712,13 @@
       "type": "shell",
       "command": "npm run format",
       "problemMatcher": [],
-      "presentation": { "reveal": "silent", "panel": "shared" }
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      }
     }
   ],
-
   "inputs": [
-    {
-      "id": "searchQuery",
-      "type": "promptString",
-      "description": "Search query to test against the QMS collection",
-      "default": "what is required for software safety classification"
-    },
     {
       "id": "question",
       "type": "promptString",

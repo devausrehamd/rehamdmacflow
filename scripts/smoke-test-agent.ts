@@ -16,6 +16,7 @@ import { QueryRecord } from "../src/queries.js";
 import { agent } from "../src/agent/graph.js";
 import { closeDb } from "../src/db/client.js";
 import { closeAllServices } from "../src/services.js";
+import { buildTraceConfig, flushLangfuse } from "../src/observability/langfuse.js";
 
 const GREEN = "\x1b[0;32m";
 const YELLOW = "\x1b[1;33m";
@@ -42,11 +43,19 @@ async function main(): Promise<void> {
   let lastNodeTime = startTime;
 
   try {
-    for await (const event of await agent.stream({
-      queryId: query.id,
-      ctx,
-      question,
-    })) {
+    for await (const event of await agent.stream(
+      {
+        queryId: query.id,
+        ctx,
+        question,
+      },
+      buildTraceConfig({
+        queryId: query.id,
+        userId: ctx.user.id,
+        tier: ctx.user.tier,
+        kind: "ask-smoke",
+      }),
+    )) {
       for (const nodeName of Object.keys(event)) {
         const now = Date.now();
         const nodeLatency = now - lastNodeTime;
@@ -93,6 +102,7 @@ async function main(): Promise<void> {
     }
     process.exit(1);
   } finally {
+    await flushLangfuse();
     await closeAllServices().catch(() => {});
     await closeDb().catch(() => {});
   }

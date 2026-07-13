@@ -44,6 +44,14 @@ const ConfigSchema = z.object({
     readonlyUser: z.string().optional(),
     readonlyPassword: z.string().optional(),
   }),
+
+  // Observability. All optional - absent keys mean tracing is off and the
+  // agent runs identically without it.
+  langfuse: z.object({
+    publicKey: z.string().optional(),
+    secretKey: z.string().optional(),
+    baseUrl: z.string().default("http://localhost:3000"),
+  }),
   api: z.object({
     port: z.number().int().positive(),
     jwtSecret: z.string().min(32, "JWT secret must be at least 32 characters"),
@@ -65,9 +73,14 @@ function loadConfig(): Config {
     },
     qdrant: {
       operations: {
-        // Prefer new tier-prefixed names, fall back to legacy ones
+        // Prefer new tier-prefixed names, fall back to legacy ones.
+        // QMS_QDRANT_COLLECTION_OVERRIDE lets tests point the agent at an
+        // isolated collection without touching the real one.
         url: process.env.QDRANT_OPERATIONS_URL ?? process.env.QDRANT_URL,
-        collection: process.env.QDRANT_OPERATIONS_COLLECTION ?? process.env.QDRANT_COLLECTION,
+        collection:
+          process.env.QMS_QDRANT_COLLECTION_OVERRIDE ??
+          process.env.QDRANT_OPERATIONS_COLLECTION ??
+          process.env.QDRANT_COLLECTION,
       },
     },
     redis: {
@@ -84,6 +97,11 @@ function loadConfig(): Config {
       database: process.env.POSTGRES_DATABASE,
       readonlyUser: process.env.POSTGRES_READONLY_USER,
       readonlyPassword: process.env.POSTGRES_READONLY_PASSWORD,
+    },
+    langfuse: {
+      publicKey: process.env.LANGFUSE_PUBLIC_KEY,
+      secretKey: process.env.LANGFUSE_SECRET_KEY,
+      baseUrl: process.env.LANGFUSE_BASE_URL ?? "http://localhost:3000",
     },
     api: {
       port: Number(process.env.API_PORT ?? 4000),

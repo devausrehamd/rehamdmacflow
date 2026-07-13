@@ -20,6 +20,12 @@ import type { RequestContext } from "../../context.js";
 import { hasPermission } from "../../tiers.js";
 import type { Role } from "../../tiers.js";
 import { AuthError, ForbiddenError } from "../errors.js";
+import {
+  getEntitlementProvider,
+  currentDomain,
+  isPermitted,
+} from "../../identity/index.js";
+import { resolveCorrelationId, newRunId, CORRELATION_HEADER } from "../../custody/correlation.js";
 
 // Augment Express's Request to include our context.
 // This makes req.ctx available throughout the request lifecycle with
@@ -63,12 +69,46 @@ export async function requireAuth(
       throw new AuthError("Account is deactivated");
     }
 
+    // Authorisation. Signature verification happened locally, above - a forged
+    // token never reaches here. Entitlement is a MUTABLE fact and is resolved
+    // per request against the identity service, which is what buys immediate
+    // revocation. Resolve ONCE; every node downstream reads ctx.labels.
+    const entitlement = await getEntitlementProvider().resolve(
+      user.id,
+      currentDomain(),
+      user.role,
+    );
+
+    if (!isPermitted(entitlement)) {
+      // No labels, revoked, or the identity service was unreachable. All three
+      // resolve to the same answer: serve nothing. Fail closed.
+      throw new AuthError(
+        `No access to the ${entitlement.domain} domain (decision ${entitlement.decisionId})`,
+      );
+    }
+
+    // Correlation ties this work to any cross-agent operation. Inherit the
+    // caller's id (an orchestrator) or mint one if this agent is the entry
+    // point. Echoed back on the response so the caller can follow the thread.
+    const { correlationId } = resolveCorrelationId(req.headers[CORRELATION_HEADER]);
+    const runId = newRunId();
+    res.setHeader(CORRELATION_HEADER, correlationId);
+
     // Build the context for downstream code
-    req.ctx = buildContext({
-      id: user.id,
-      email: user.email,
-      role: user.role as Role,
-    });
+    req.ctx = buildContext(
+      {
+        id: user.id,
+        email: user.email,
+        role: user.role as Role,
+      },
+      {
+        labels: entitlement.labels,
+        decisionId: entitlement.decisionId,
+        policyHash: entitlement.policyHash,
+        domain: entitlement.domain,
+      },
+      { correlationId, runId },
+    );
 
     next();
   } catch (err) {

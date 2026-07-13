@@ -1,0 +1,86 @@
+{
+  "documentType": "risk-register",
+  "displayName": "Risk Register",
+  "version": "0.1.0",
+  "aliases": [
+    "risk register",
+    "risk log"
+  ],
+  "reviewThreshold": 0.85,
+  "requires": [],
+  "exports": {
+    "riskItems": {
+      "description": "Every risk entry, so a downstream document can cite RISK-xxx structurally rather than extracting the identifier from prose.",
+      "schema": "array<{ id: string, title: string, subsystem: string, owner: string, score: int, status: string }>"
+    }
+  },
+  "criteria": [
+    {
+      "id": "unique_identifiers",
+      "criterion": "Every risk has a unique identifier. Duplicate identifiers corrupt every count and every downstream cross-reference.",
+      "explanation": "",
+      "weight": 10,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output"
+    },
+    {
+      "id": "no_unsupported_numbers",
+      "criterion": "Every score, likelihood, and impact traces to the retrieved data or the SQL results.",
+      "explanation": "",
+      "weight": 10,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output"
+    },
+    {
+      "id": "completeness",
+      "criterion": "Each risk has title, description, subsystem, owner, likelihood, impact, score, status.",
+      "explanation": "",
+      "weight": 40,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output"
+    },
+    {
+      "id": "grounding",
+      "criterion": "Risks are supported by the retrieved sources.",
+      "explanation": "",
+      "weight": 40,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output"
+    },
+    {
+      "id": "clarity",
+      "criterion": "Written unambiguously.",
+      "explanation": "",
+      "weight": 20,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output"
+    }
+  ],
+  "trajectory": {
+    "description": "Provenance checks against the recorded retrieval trajectory.",
+    "requiredSources": [
+      {
+        "id": "risk_procedure",
+        "match": "procedures/RISK",
+        "reason": "Risk registers must be grounded in the controlled risk-management procedure, which defines the scoring scales."
+      }
+    ],
+    "forbiddenSources": [
+      {
+        "id": "no_unapproved_drafts",
+        "match": "drafts/",
+        "reason": "Must not be grounded in unapproved draft material."
+      }
+    ]
+  }
+}

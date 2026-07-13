@@ -30,8 +30,12 @@ import { z } from "zod";
 import { requireAuth, requirePermission } from "../auth/middleware.js";
 import { ValidationError } from "../errors.js";
 import { QueryRecord } from "../../queries.js";
+import { CORRELATION_HEADER } from "../../custody/correlation.js";
+import { appendEvent } from "../../custody/ledger.js";
+import { createHash } from "node:crypto";
 import { agent } from "../../agent/graph.js";
 import { classify } from "../../agent/classifier.js";
+import { buildTraceConfig, flushLangfuse } from "../../observability/langfuse.js";
 
 const HEARTBEAT_INTERVAL_MS = 15_000;
 
@@ -96,6 +100,24 @@ askRouter.post(
     let queryId: string | null = null;
 
     try {
+      // Custody context was resolved at the boundary and rides in ctx. The
+      // correlation id is already on the response header (middleware set it).
+      const custodyCtx = {
+        correlationId: req.ctx!.correlationId,
+        runId: req.ctx!.runId,
+        userId: req.ctx!.user.id,
+        decisionId: req.ctx!.decisionId,
+        policyHash: req.ctx!.policyHash,
+      };
+
+      // First custody event: this agent began handling this request. Payload is
+      // references only - the question is the user's own input, not retrieved
+      // content, so it is recorded; no retrieved text ever enters the chain.
+      await appendEvent(custodyCtx, "run_started", {
+        kind: "ask",
+        requestId: req.ctx!.requestId,
+      });
+
       // Create the QueryRecord BEFORE streaming so its ID can be returned
       // in the first event
       const query = await QueryRecord.create(req.ctx!, {
@@ -103,19 +125,38 @@ askRouter.post(
         question,
       });
       queryId = query.id;
-      sendEvent("started", { queryId: query.id, mode, question });
+      sendEvent("started", {
+        queryId: query.id,
+        mode,
+        question,
+        correlationId: req.ctx!.correlationId,
+      });
 
-      // Stream the graph execution
+      // Stream the graph execution. The user's bearer token is threaded into
+      // the agent state so the SQL retrieval node can call the data API as the
+      // user (tier permissions enforced there). This token stays in-memory in
+      // the LangGraph state and is never written to the persisted QueryRecord.
+      const bearerToken = req.headers.authorization?.startsWith("Bearer ")
+        ? req.headers.authorization.slice(7).trim()
+        : undefined;
+
       const initialState = {
         queryId: query.id,
         ctx: req.ctx!,
         question,
+        authToken: bearerToken,
       };
 
       const nodeStartTimes: Record<string, number> = {};
 
       const stream = await agent.stream(initialState, {
-        signal: abortController.signal,
+        ...buildTraceConfig({
+          queryId: query.id,
+          userId: req.ctx!.user.id,
+          tier: req.ctx!.user.tier,
+          kind: "ask",
+          signal: abortController.signal,
+        }),
       });
 
       for await (const event of stream) {
@@ -141,6 +182,36 @@ askRouter.post(
         throw new Error("QueryRecord disappeared after agent completion");
       }
       const data = finalQuery.toJSON();
+
+      // Custody: bind the answer by hash and record which chunks grounded it.
+      // References only - the answer HASH, not its text (the text is in the
+      // QueryRecord); chunk IDS, not chunk content. This closes the chain for
+      // this run and is what the export later verifies.
+      const answerText = data.final_answer ?? "";
+      const chunkIds: string[] = [];
+      for (const tier of Object.values(data.tiers)) {
+        for (const c of (tier as { chunks?: { id: string }[] }).chunks ?? []) {
+          chunkIds.push(c.id);
+        }
+      }
+      await appendEvent(
+        {
+          correlationId: req.ctx!.correlationId,
+          runId: req.ctx!.runId,
+          userId: req.ctx!.user.id,
+          decisionId: req.ctx!.decisionId,
+          policyHash: req.ctx!.policyHash,
+        },
+        "run_completed",
+        {
+          queryId: query.id,
+          status: "complete",
+          answerHash: createHash("sha256").update(answerText, "utf8").digest("hex"),
+          groundedInChunkIds: chunkIds,
+          sqlQueryCount: (data.sql_results ?? []).length,
+          totalLatencyMs: Date.now() - startTime,
+        },
+      );
 
       sendEvent("result", {
         answer: data.final_answer,
@@ -174,6 +245,9 @@ askRouter.post(
       if (!res.writableEnded) {
         res.end();
       }
+      // Deliver this query's trace promptly. Fire-and-forget so it doesn't
+      // delay the response; no-op when tracing is off.
+      void flushLangfuse();
     }
   },
 );
@@ -184,6 +258,19 @@ askRouter.post(
  * the client can fetch the full QueryRecord via API later if needed.
  */
 function summarizeNode(nodeName: string, update: Record<string, unknown>): object {
+  if (nodeName === "understand" && update.understanding) {
+    const u = update.understanding as {
+      questionType?: string;
+      rephrasings?: string[];
+      tableRelevant?: boolean;
+    };
+    return {
+      question_type: u.questionType,
+      rephrasings: u.rephrasings?.length ?? 0,
+      table_relevant: u.tableRelevant,
+    };
+  }
+
   if (nodeName === "retrieve" && update.chunksByTier) {
     const counts: Record<string, number> = {};
     const chunksByTier = update.chunksByTier as Record<string, unknown[]>;
@@ -200,6 +287,13 @@ function summarizeNode(nodeName: string, update: Record<string, unknown>): objec
       lengths[tier] = partial.length;
     }
     return { partial_chars_per_tier: lengths };
+  }
+
+  if (nodeName === "sql_retrieve" && update.sqlResults) {
+    const results = update.sqlResults as Record<string, { rowCount: number }>;
+    const tablesQueried = Object.keys(results).length;
+    const totalRows = Object.values(results).reduce((sum, r) => sum + r.rowCount, 0);
+    return { tables_queried: tablesQueried, total_rows: totalRows };
   }
 
   if (nodeName === "reconcile" && typeof update.finalAnswer === "string") {

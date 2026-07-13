@@ -1,0 +1,161 @@
+# docker-compose.langfuse.yml
+#
+# Self-hosted Langfuse v3 (full stack) for local LLM observability.
+#
+# Kept in a SEPARATE compose file from the core app stack so it can later be
+# moved to a dedicated host without disturbing anything - the app only talks
+# to Langfuse over LANGFUSE_BASE_URL, so "local now, remote later" is just an
+# env change.
+#
+# Start:  docker compose -f docker-compose.langfuse.yml up -d
+# Stop:   docker compose -f docker-compose.langfuse.yml down
+# UI:     http://localhost:3000  (log in with LANGFUSE_INIT_USER_EMAIL/PASSWORD)
+#
+# The project and API keys are AUTO-PROVISIONED on first boot from the
+# LANGFUSE_INIT_* values below, which read from your .env. The same key pair
+# is used by the app to send traces - one source of truth, no manual setup.
+#
+# Only the web UI port (3000) is published. The internal postgres, redis,
+# clickhouse, and minio are isolated on the compose network and do NOT
+# conflict with your host services (brew postgres/redis, the Qdrant container).
+
+services:
+  langfuse-web:
+    image: langfuse/langfuse:3
+    restart: unless-stopped
+    depends_on: &lf-depends
+      langfuse-postgres:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+      langfuse-redis:
+        condition: service_healthy
+      langfuse-minio:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment: &lf-env
+      DATABASE_URL: postgresql://postgres:postgres@langfuse-postgres:5432/postgres
+      SALT: ${LANGFUSE_SALT:-local-dev-salt-change-me}
+      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"
+      # ClickHouse (trace analytics store)
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-clickhouse}
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      # Redis (queue/cache)
+      REDIS_HOST: langfuse-redis
+      REDIS_PORT: "6379"
+      REDIS_AUTH: ${LANGFUSE_REDIS_PASSWORD:-langfuse-redis-secret}
+      # MinIO (S3-compatible blob storage for events/media)
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_MINIO_PASSWORD:-miniosecret}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_MINIO_PASSWORD:-miniosecret}
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+      # Auth / session
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-local-dev-nextauth-secret-change-me}
+      # Auto-provision org/project/user/keys on first boot. The public/secret
+      # keys come from .env and are the SAME keys the app uses to send traces.
+      LANGFUSE_INIT_ORG_ID: qms-local
+      LANGFUSE_INIT_ORG_NAME: QMS Local
+      LANGFUSE_INIT_PROJECT_ID: qms-agent
+      LANGFUSE_INIT_PROJECT_NAME: QMS Agent
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-local-dev}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-admin@qms.local}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-QMS Admin}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-changeme-langfuse}
+
+  langfuse-worker:
+    image: langfuse/langfuse-worker:3
+    restart: unless-stopped
+    depends_on: *lf-depends
+    environment: *lf-env
+
+  langfuse-postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - langfuse_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  langfuse-clickhouse:
+    image: clickhouse/clickhouse-server
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-clickhouse}
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  langfuse-redis:
+    image: redis:7
+    restart: unless-stopped
+    command: >
+      --requirepass ${LANGFUSE_REDIS_PASSWORD:-langfuse-redis-secret}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  langfuse-minio:
+    image: minio/minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: ${LANGFUSE_MINIO_PASSWORD:-miniosecret}
+    # Console published on 9091 for debugging (API stays internal on 9000)
+    ports:
+      - "9091:9001"
+    volumes:
+      - langfuse_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    entrypoint: >
+      /bin/sh -c "
+      mkdir -p /data/langfuse &&
+      minio server /data --console-address ':9001'
+      "
+
+volumes:
+  langfuse_postgres_data:
+  langfuse_clickhouse_data:
+  langfuse_clickhouse_logs:
+  langfuse_minio_data:

@@ -51,6 +51,36 @@ import type {
   DocumentChunk,
   ChunkingConfig,
 } from "./types.js";
+import { chunkByHeadings, type ParsedSection } from "./heading-chunker.js";
+
+/**
+ * Chunk a document, returning chunks AND (for the structured strategy) the
+ * parsed section map. For non-structured strategies, sections is empty.
+ *
+ * The pipeline uses this so it can write the section map to Postgres when the
+ * structured strategy is active.
+ */
+export function chunkDocumentStructured(
+  doc: ConvertedDocument,
+  config: ChunkingConfig,
+): { chunks: DocumentChunk[]; sections: ParsedSection[] } {
+  const ext = doc.sourceFile.extension;
+  const strategy = config.perFileType[ext] ?? config.default;
+
+  if (strategy.strategy === "structured") {
+    const size = strategy.size ?? 800;
+    const result = chunkByHeadings(doc.markdown, doc.sourceFile.sha256, {
+      targetSize: size,
+      minSize: Math.floor(size * 0.5),
+      maxSize: Math.floor(size * 1.5),
+      overlap: strategy.overlap ?? 100,
+    });
+    return { chunks: result.chunks, sections: result.sections };
+  }
+
+  // Non-structured strategies produce no section map.
+  return { chunks: chunkDocument(doc, config), sections: [] };
+}
 
 export function chunkDocument(
   doc: ConvertedDocument,
@@ -75,6 +105,15 @@ export function chunkDocument(
         maxSize: Math.floor((strategy.size ?? 800) * 1.5),
         overlap: strategy.overlap ?? 100,
       });
+    case "structured":
+      // When called through the plain chunkDocument path, return just the
+      // chunks (sections are available via chunkDocumentStructured).
+      return chunkByHeadings(doc.markdown, doc.sourceFile.sha256, {
+        targetSize: strategy.size ?? 800,
+        minSize: Math.floor((strategy.size ?? 800) * 0.5),
+        maxSize: Math.floor((strategy.size ?? 800) * 1.5),
+        overlap: strategy.overlap ?? 100,
+      }).chunks;
     case "tabular":
       return chunkTabular(
         doc.markdown,
@@ -95,6 +134,17 @@ interface SemanticOptions {
   minSize: number;
   maxSize: number;
   overlap: number;
+}
+
+/**
+ * Reusable entry point for the semantic chunker, used by the heading-aware
+ * chunker to chunk within a section's body with the same clean-boundary logic.
+ */
+export function chunkBySemanticForReuse(
+  text: string,
+  opts: SemanticOptions,
+): DocumentChunk[] {
+  return chunkBySemantic(text, opts);
 }
 
 /**

@@ -15,6 +15,7 @@ brew "postgresql@17"
 # Container runtime (open source)
 brew "colima"
 brew "docker"
+brew "docker-compose"   # Compose v2 plugin (provides `docker compose`)
 
 # Optional but recommended
 brew "watch"

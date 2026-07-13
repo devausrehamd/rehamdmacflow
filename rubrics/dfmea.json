@@ -1,0 +1,257 @@
+{
+  "documentType": "dfmea",
+  "displayName": "Design Failure Mode and Effects Analysis",
+  "version": "0.1.0",
+  "aliases": [
+    "dfmea",
+    "design fmea",
+    "design failure mode and effects analysis",
+    "design failure modes and effects analysis"
+  ],
+  "reviewThreshold": 0.85,
+  "requires": [
+    {
+      "documentType": "risk-register",
+      "domain": "engineering",
+      "consume": [
+        "riskItems"
+      ],
+      "reason": "A DFMEA cites risk identifiers (RISK-xxx). Those identifiers must come from an APPROVED risk register, read structurally, not extracted from its prose."
+    }
+  ],
+  "exports": {
+    "failureModes": {
+      "description": "Every analysed failure mode with its ratings, so a downstream document (e.g. an export control list) can cite them structurally.",
+      "schema": "array<{ id: string, item: string, failureMode: string, severity: int, occurrence: int, detection: int, rpn: int, riskRef: string }>"
+    }
+  },
+  "sections": [
+    {
+      "id": "failure_modes",
+      "title": "Failure Mode Analysis",
+      "cardinality": "array",
+      "groundedIn": [
+        "design_inputs",
+        "risk_register.riskItems"
+      ],
+      "fields": [
+        {
+          "name": "item",
+          "type": "string",
+          "provenance": "retrieved",
+          "sopClause": "SOP-FMEA 4.1",
+          "required": true
+        },
+        {
+          "name": "failure_mode",
+          "type": "string",
+          "provenance": "generated",
+          "sopClause": "SOP-FMEA 4.1",
+          "required": true
+        },
+        {
+          "name": "effect",
+          "type": "string",
+          "provenance": "generated",
+          "sopClause": "SOP-FMEA 4.1",
+          "required": true
+        },
+        {
+          "name": "risk_ref",
+          "type": "reference",
+          "provenance": "retrieved",
+          "referenceExport": "risk-register.riskItems.id",
+          "sopClause": "SOP-FMEA 4.1",
+          "required": true
+        },
+        {
+          "name": "severity",
+          "type": "integer",
+          "provenance": "retrieved",
+          "min": 1,
+          "max": 10,
+          "sopClause": "SOP-FMEA 4.2",
+          "required": true
+        },
+        {
+          "name": "occurrence",
+          "type": "integer",
+          "provenance": "retrieved",
+          "min": 1,
+          "max": 10,
+          "sopClause": "SOP-FMEA 4.2",
+          "required": true
+        },
+        {
+          "name": "detection",
+          "type": "integer",
+          "provenance": "retrieved",
+          "min": 1,
+          "max": 10,
+          "sopClause": "SOP-FMEA 4.2",
+          "required": true
+        },
+        {
+          "name": "rpn",
+          "type": "integer",
+          "provenance": "computed",
+          "formula": "severity * occurrence * detection",
+          "sopClause": "SOP-FMEA 4.3",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "recipe": {
+    "steps": [
+      {
+        "id": "sop",
+        "kind": "retrieve_sections",
+        "source": "procedures/FMEA",
+        "sections": [
+          "4.1",
+          "4.2",
+          "4.3"
+        ]
+      },
+      {
+        "id": "risks",
+        "kind": "recall_prior",
+        "documentType": "risk-register",
+        "export": "riskItems"
+      },
+      {
+        "id": "data",
+        "kind": "query_table",
+        "collection": "risk-register",
+        "inputs": [
+          "sop"
+        ]
+      },
+      {
+        "id": "gen_fm",
+        "kind": "generate_section",
+        "sectionId": "failure_modes",
+        "bestOf": 2,
+        "inputs": [
+          "sop",
+          "data",
+          "risks"
+        ]
+      },
+      {
+        "id": "check_fm",
+        "kind": "validate_section",
+        "sectionId": "failure_modes",
+        "inputs": [
+          "gen_fm"
+        ]
+      },
+      {
+        "id": "score",
+        "kind": "judge",
+        "criteria": [],
+        "inputs": [
+          "gen_fm"
+        ]
+      },
+      {
+        "id": "gate",
+        "kind": "require_human",
+        "prompt": "Review the DFMEA failure-mode analysis.",
+        "inputs": [
+          "score"
+        ]
+      }
+    ]
+  },
+  "criteria": [
+    {
+      "id": "no_fabricated_failure_modes",
+      "criterion": "Every failure mode traces to a retrieved source: a design document, a recorded defect, or a prior analysis. Invented failure modes fail this criterion.",
+      "explanation": "",
+      "weight": 10,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output"
+    },
+    {
+      "id": "severity_scale_correct",
+      "criterion": "Severity, occurrence, and detection ratings use the scales defined in the governing procedure, not invented ranges.",
+      "explanation": "",
+      "weight": 10,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output"
+    },
+    {
+      "id": "no_unsupported_numbers",
+      "criterion": "Every RPN, rating, and count traces to the retrieved data or the SQL results.",
+      "explanation": "",
+      "weight": 10,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output"
+    },
+    {
+      "id": "completeness",
+      "criterion": "Each analysed item has function, failure mode, effect, cause, current controls, and ratings.",
+      "explanation": "",
+      "weight": 35,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output"
+    },
+    {
+      "id": "grounding",
+      "criterion": "Failure modes and effects are supported by the retrieved design and defect sources.",
+      "explanation": "",
+      "weight": 30,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output"
+    },
+    {
+      "id": "actions",
+      "criterion": "Items above the action threshold carry a recommended action with an owner.",
+      "explanation": "",
+      "weight": 20,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output"
+    },
+    {
+      "id": "clarity",
+      "criterion": "Written unambiguously, appropriate for a controlled quality document.",
+      "explanation": "",
+      "weight": 15,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output"
+    }
+  ],
+  "trajectory": {
+    "description": "Provenance checks. These required sources are also the recipe's required steps - one declaration, two uses.",
+    "requiredSources": [
+      {
+        "id": "fmea_procedure",
+        "match": "procedures/FMEA",
+        "reason": "DFMEA drafts must be grounded in the controlled FMEA procedure, which defines the rating scales."
+      }
+    ],
+    "forbiddenSources": [
+      {
+        "id": "no_unapproved_drafts",
+        "match": "drafts/",
+        "reason": "Must not be grounded in unapproved draft material."
+      }
+    ]
+  }
+}

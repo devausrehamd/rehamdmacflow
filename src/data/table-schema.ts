@@ -21,6 +21,22 @@ export interface ColumnSchema {
   type: InferredType;
   nullable: boolean;
   sample_values: (string | number | boolean | null)[];
+
+  // --- Tier 1: deterministic semantics derived from the data itself ---
+  //
+  // value_domain: the COMPLETE set of distinct values, present only for
+  // low-cardinality columns (e.g. status). When present the planner can
+  // filter exactly without guessing; when absent the column is high
+  // cardinality or free text and sample_values is the best we can offer.
+  value_domain?: (string | number | boolean)[] | null;
+  // range: observed min/max for ordered types (integer, numeric, date).
+  // Tells the planner what a threshold like ">= 15" means in context.
+  value_range?: { min: string | number; max: string | number } | null;
+
+  // --- Tier 2: semantics declared in the document's own legend ---
+  // A note lifted verbatim from the workbook's Metadata/Legend sheet, when
+  // that sheet names this exact column. Never inferred, never fuzzy-matched.
+  notes?: string | null;
 }
 
 const SQL_RESERVED = new Set([
@@ -126,13 +142,71 @@ export function inferColumnType(values: unknown[]): InferredType {
   return "text";
 }
 
+// A column with at most this many distinct values gets its COMPLETE domain
+// published, not just samples. Above it, the list would bloat the blurb and
+// stop being useful as an exact filter vocabulary.
+const MAX_DOMAIN_SIZE = 12;
+
+/** Complete distinct-value domain, or null if the column is high-cardinality. */
+function computeValueDomain(
+  values: unknown[],
+  type: InferredType,
+): (string | number | boolean)[] | null {
+  // Ranges are the useful summary for ordered types, not a value list.
+  if (type === "date" || type === "numeric") return null;
+
+  const distinct = new Set<string | number | boolean>();
+  for (const v of values) {
+    if (isEmpty(v)) continue;
+    const s = coerceSample(v, type);
+    if (s === null) continue;
+    distinct.add(s);
+    if (distinct.size > MAX_DOMAIN_SIZE) return null; // too many - bail early
+  }
+  return distinct.size > 0 ? Array.from(distinct).sort(compareSamples) : null;
+}
+
+function compareSamples(
+  a: string | number | boolean,
+  b: string | number | boolean,
+): number {
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  return String(a).localeCompare(String(b));
+}
+
+/** Observed min/max for ordered types. Null for text/boolean. */
+function computeValueRange(
+  values: unknown[],
+  type: InferredType,
+): { min: string | number; max: string | number } | null {
+  if (type !== "integer" && type !== "numeric" && type !== "date") return null;
+
+  const present = values.filter((v) => !isEmpty(v));
+  if (present.length === 0) return null;
+
+  if (type === "date") {
+    const strs = present.map((v) => String(v)).sort();
+    return { min: strs[0], max: strs[strs.length - 1] };
+  }
+
+  const nums = present.map((v) => Number(v)).filter((n) => Number.isFinite(n));
+  if (nums.length === 0) return null;
+  return { min: Math.min(...nums), max: Math.max(...nums) };
+}
+
 /**
  * Build the full column schema for a table given its headers and rows.
  * rows is an array of arrays (row-major), aligned to headers by index.
+ *
+ * `columnNotes` (optional) carries Tier-2 notes lifted verbatim from the
+ * workbook's legend sheet, keyed by sql_name. Notes are attached only on an
+ * exact normalised name match - never fuzzy - because attaching a threshold
+ * to the wrong column would silently corrupt every query against it.
  */
 export function buildColumnSchema(
   headers: string[],
   rows: unknown[][],
+  columnNotes?: Record<string, string>,
 ): ColumnSchema[] {
   const sqlNames = normalizeHeaders(headers);
 
@@ -147,12 +221,17 @@ export function buildColumnSchema(
       .slice(0, 3)
       .map((v) => coerceSample(v, type));
 
+    const sqlName = sqlNames[colIdx];
+
     return {
       original: header,
-      sql_name: sqlNames[colIdx],
+      sql_name: sqlName,
       type,
       nullable,
       sample_values: samples,
+      value_domain: computeValueDomain(columnValues, type),
+      value_range: computeValueRange(columnValues, type),
+      notes: columnNotes?.[sqlName] ?? null,
     };
   });
 }

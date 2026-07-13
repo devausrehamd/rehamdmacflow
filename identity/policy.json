@@ -1,0 +1,29 @@
+{
+  "policyVersion": "0.1.0-local",
+  "description": "Fixed local entitlement policy. Stands in for the identity service until it exists. Labels are domain-prefixed so a decision can be scoped: an accounting agent never learns which engineering labels a subject holds.",
+
+  "roles": {
+    "engineer": [
+      "engineering:internal"
+    ],
+    "reviewer": [
+      "engineering:internal",
+      "engineering:restricted"
+    ],
+    "admin": [
+      "engineering:internal",
+      "engineering:restricted",
+      "accounting:cost-summary"
+    ],
+    "service": []
+  },
+
+  "subjects": {},
+
+  "_subjects_example": {
+    "00000000-0000-0000-0000-000000000000": {
+      "labels": ["accounting:cost-summary"],
+      "note": "An engineer granted the cost-summary label for CAPA impact assessment. Additive to their role labels."
+    }
+  }
+}

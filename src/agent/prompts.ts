@@ -9,6 +9,26 @@
 //   - buildReconciliationPrompt: combines partials into a final answer
 
 import type { RetrievedChunk } from "../queries.js";
+import { renderSqlResults, type SqlResultForPrompt } from "./sql-render.js";
+
+// Re-exported so existing importers of this type from prompts.js keep working.
+export type { SqlResultForPrompt };
+
+// A table blurb has two parts: a prose description (good for the answering
+// model to know the table exists and what it holds) and a schema section -
+// the "query manual" containing the table id and "query the data API using
+// structured query primitives" instructions. That schema section is guidance
+// for the PLANNER, not content for the answer. If it reaches the answering
+// prompt, the model tends to describe HOW to query instead of using the
+// exact data. So we strip it: keep the prose, drop everything from the
+// schema marker onward.
+const BLURB_SCHEMA_MARKER = "Structured data available. SQL table id:";
+
+function stripBlurbSchema(text: string): string {
+  const idx = text.indexOf(BLURB_SCHEMA_MARKER);
+  if (idx === -1) return text; // not a blurb, or format changed - leave as-is
+  return text.slice(0, idx).trimEnd();
+}
 
 /**
  * Rewrite a question for retrieval if needed.
@@ -31,29 +51,38 @@ export function buildPartialAnswerPrompt(
   question: string,
   tier: string,
   chunks: RetrievedChunk[],
+  sqlResults?: SqlResultForPrompt[],
 ): string {
   const context = chunks
     .map((c, i) => {
       const src = c.source_path ?? "unknown";
       const sheet = c.sheet_name ? ` [sheet: ${c.sheet_name}]` : "";
       const rows = c.row_range ? ` [rows ${c.row_range[0]}-${c.row_range[1]}]` : "";
-      return `[Source ${i + 1}: ${src}${sheet}${rows}]\n${c.text}`;
+      return `[Source ${i + 1}: ${src}${sheet}${rows}]\n${stripBlurbSchema(c.text)}`;
     })
     .join("\n\n---\n\n");
+
+  // Exact data from SQL takes precedence over prose inference. The
+  // presentation layer (sql-render) turns the rows into prose the model
+  // reads reliably - no raw JSON reaches the prompt.
+  let exactDataSection = "";
+  if (sqlResults && sqlResults.length > 0) {
+    const rendered = renderSqlResults(sqlResults);
+    exactDataSection = `\n\nEXACT DATA — this comes from precise database queries and is DEFINITIVE. It is the authoritative answer to the question. Use these exact numbers and values; do NOT say information is missing when it appears here:\n\n${rendered}\n`;
+  }
 
   return `You are answering a question using the following context from the "${tier}" information domain.
 
 CONTEXT:
-${context}
+${context}${exactDataSection}
 
 QUESTION: ${question}
 
 Instructions:
-- Answer based ONLY on the context above.
-- If the context does not contain enough information, say so explicitly.
-- Cite sources by their bracketed source numbers (e.g. "according to Source 1").
-- Be concise but complete.
-- If the question is about specific values or details, quote them exactly.`;
+- If EXACT DATA is provided above, it IS the answer - state it directly and confidently. Never say information is unavailable when exact data is present.
+- Otherwise answer from the context, and only say information is missing if neither the context nor exact data covers it.
+- Cite sources by their bracketed source numbers where relevant.
+- Be concise and direct. If the question asks "how many", give the number.`;
 }
 
 /**
@@ -78,7 +107,7 @@ QUESTION: ${question}
 DRAFT ANSWER:
 ${partialsByTier[tiers[0]]}
 
-Return the polished answer. Preserve all citations exactly as written.`;
+Return the polished answer. Preserve all specific numbers, counts, and values EXACTLY - never soften a definite figure into "some" or "insufficient information". Preserve all citations exactly as written.`;
   }
 
   // Multi-tier case: reconciliation across information domains.

@@ -17,6 +17,8 @@ import * as XLSX from "xlsx";
 import mammoth from "mammoth";
 import { basename, extname } from "node:path";
 import type { SourceFile, ExtractedTableData } from "./types.js";
+import { extractWorkbookLegend, isLegendSheet } from "../data/legend.js";
+import { normalizeHeaders } from "../data/table-schema.js";
 
 const MIN_COLUMNS = 2;
 const MIN_DATA_ROWS = 1;
@@ -53,6 +55,10 @@ export async function extractXlsxTables(file: SourceFile): Promise<ExtractedTabl
     const sheet = workbook.Sheets[sheetName];
     if (!sheet) continue;
 
+    // A legend sheet is documentation, not data. Never load it as a table -
+    // its contents are read separately (below) as Tier-2 column semantics.
+    if (isLegendSheet(sheetName)) continue;
+
     const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
       header: 1,
       defval: "",
@@ -68,6 +74,13 @@ export async function extractXlsxTables(file: SourceFile): Promise<ExtractedTabl
       continue;
     }
 
+    // Tier 2: read the workbook's own legend and attach whatever it says
+    // about THIS sheet's columns. Deterministic, verbatim, exact-match only.
+    const legend = await extractWorkbookLegend(
+      file.absolutePath,
+      normalizeHeaders(headers),
+    );
+
     tables.push({
       sheetName,
       tableIndex: tableIndex++,
@@ -76,6 +89,7 @@ export async function extractXlsxTables(file: SourceFile): Promise<ExtractedTabl
       rows: dataRows,
       extractionMethod: "xlsx_cells",
       extractionConfidence: 100,
+      legend,
     });
   }
 

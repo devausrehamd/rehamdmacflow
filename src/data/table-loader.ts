@@ -26,6 +26,7 @@ import {
   type ColumnSchema,
 } from "./table-schema.js";
 import { generateBlurb } from "./blurb.js";
+import { checkDataQuality } from "./data-quality.js";
 
 export interface ExtractedTable {
   sourcePath: string;
@@ -40,6 +41,20 @@ export interface ExtractedTable {
   extractionMethod?: string;
   extractionConfidence?: number; // 0-100
   sourceRegion?: Record<string, unknown> | null;
+  // Tier-2 semantics from the workbook's own legend sheet, if present.
+  legend?: {
+    columnNotes: Record<string, string>;
+    tableNotes: string[];
+    sourceSheet: string | null;
+    declaredClassification?: string | null;
+  };
+  /** Enforcement labels resolved from the source document's classification. */
+  accessLabels?: string[];
+  /** Canonical project id. Null means this table satisfies no prerequisite. */
+  project?: string | null;
+  /** Canonical collection id. Null means this table joins no aggregate. */
+  collection?: string | null;
+  projectDisplayName?: string | null;
 }
 
 export interface LoadedTable {
@@ -71,7 +86,13 @@ export async function loadTable(table: ExtractedTable): Promise<LoadedTable> {
 
   const tableId = randomUUID();
   const physical = physicalTableName(tableId);
-  const columns = buildColumnSchema(table.headers, table.rows);
+  // Tier 2: the workbook's own legend, if the extractor found one. Column
+  // notes attach by exact name; anything else becomes a table-level note.
+  const columns = buildColumnSchema(
+    table.headers,
+    table.rows,
+    table.legend?.columnNotes,
+  );
 
   // 1. CREATE TABLE (DDL - identifiers validated, no user values)
   const columnDefs = columns
@@ -84,6 +105,14 @@ export async function loadTable(table: ExtractedTable): Promise<LoadedTable> {
     await insertRows(physical, columns, table.rows);
   }
 
+  // 2b. Deterministic data-quality checks. These never block ingestion - they
+  // surface defects (duplicate identifiers, empty columns) that would
+  // otherwise silently corrupt counts and filters over this table.
+  const findings = checkDataQuality(columns, table.rows);
+  for (const f of findings) {
+    console.warn(`    [data-quality] ${table.displayName}: ${f.detail}`);
+  }
+
   // 3. Generate blurb
   const blurb = generateBlurb({
     tableId,
@@ -93,6 +122,10 @@ export async function loadTable(table: ExtractedTable): Promise<LoadedTable> {
     tier: table.tier,
     rowCount: table.rows.length,
     columns,
+    tableNotes: table.legend?.tableNotes,
+    project: table.project,
+    projectDisplayName: table.projectDisplayName,
+    collection: table.collection,
   });
 
   // 4. Registry entry
@@ -105,6 +138,9 @@ export async function loadTable(table: ExtractedTable): Promise<LoadedTable> {
     display_name: table.displayName,
     tier: table.tier,
     column_schema: { columns },
+    access_labels: table.accessLabels ?? [],
+    project: table.project ?? null,
+    collection: table.collection ?? null,
     row_count: table.rows.length,
     blurb,
     extraction_method: table.extractionMethod ?? "xlsx_cells",

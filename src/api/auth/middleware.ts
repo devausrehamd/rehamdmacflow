@@ -13,6 +13,7 @@
 //   app.post("/api/v1/admin/users", requireAuth, requireRole("admin"), handler)
 
 import type { Request, Response, NextFunction } from "express";
+import { config } from "../../config.js";
 import { verifyAccessToken } from "./jwt.js";
 import { findUserById } from "./store.js";
 import { buildContext } from "../../context.js";
@@ -57,16 +58,36 @@ export async function requireAuth(
 
     const payload = verifyAccessToken(token);
 
-    // Load user from DB to ensure they still exist and are active.
-    // This is a database read on every authenticated request - acceptable
-    // for now. If it becomes a bottleneck, we can cache user records in
-    // Redis with short TTL (1 minute) for hot user lookups.
-    const user = await findUserById(payload.sub);
-    if (!user) {
-      throw new AuthError("User no longer exists");
-    }
-    if (!user.is_active) {
-      throw new AuthError("Account is deactivated");
+    // Resolve the caller's identity. Two modes:
+    //
+    //  http  - the external ID Server is the source of truth. The Agent keeps
+    //          NO local mirror of its users, so there is no local row to load.
+    //          Trust the verified token's claims (subject + role); the mutable,
+    //          revocable fact - entitlement - is still resolved per request
+    //          against the ID Server below.
+    //  local - the Agent owns the user store; load and validate the row.
+    let identity: { id: string; email: string; role: Role };
+
+    if (config.api.identityMode === "http") {
+      identity = {
+        id: payload.sub,
+        // ID Server tokens carry no email; synthesise a stable placeholder.
+        email: payload.email ?? `${payload.sub}@idserver.local`,
+        role: payload.role as Role,
+      };
+    } else {
+      // Load user from DB to ensure they still exist and are active.
+      // This is a database read on every authenticated request - acceptable
+      // for now. If it becomes a bottleneck, we can cache user records in
+      // Redis with short TTL (1 minute) for hot user lookups.
+      const user = await findUserById(payload.sub);
+      if (!user) {
+        throw new AuthError("User no longer exists");
+      }
+      if (!user.is_active) {
+        throw new AuthError("Account is deactivated");
+      }
+      identity = { id: user.id, email: user.email, role: user.role as Role };
     }
 
     // Authorisation. Signature verification happened locally, above - a forged
@@ -74,9 +95,9 @@ export async function requireAuth(
     // per request against the identity service, which is what buys immediate
     // revocation. Resolve ONCE; every node downstream reads ctx.labels.
     const entitlement = await getEntitlementProvider().resolve(
-      user.id,
+      identity.id,
       currentDomain(),
-      user.role,
+      identity.role,
     );
 
     if (!isPermitted(entitlement)) {
@@ -97,9 +118,9 @@ export async function requireAuth(
     // Build the context for downstream code
     req.ctx = buildContext(
       {
-        id: user.id,
-        email: user.email,
-        role: user.role as Role,
+        id: identity.id,
+        email: identity.email,
+        role: identity.role,
       },
       {
         labels: entitlement.labels,

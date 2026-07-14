@@ -15,11 +15,13 @@ import { randomBytes } from "node:crypto";
 import { config } from "../../config.js";
 import { AuthError } from "../errors.js";
 
-const ISSUER = "qms-agent";
+// Issuer stamped on tokens the Agent mints itself (local login).
+const LOCAL_ISSUER = "qms-agent";
 
 export interface AccessTokenPayload {
   sub: string;
-  email: string;
+  // Optional: tokens minted by the external ID Server carry only sub/role.
+  email?: string;
   role: string;
   iat: number;
   exp: number;
@@ -37,15 +39,17 @@ export function signAccessToken(user: { id: string; email: string; role: string 
     {
       algorithm: "HS256",
       expiresIn: `${config.api.accessTokenTtlMinutes}m`,
-      issuer: ISSUER,
+      issuer: LOCAL_ISSUER,
     },
   );
 }
 
 export function verifyAccessToken(token: string): AccessTokenPayload {
   try {
+    // Accept both the Agent's own issuer and the trusted external ID Server's,
+    // so local logins and ID-Server-issued tokens both verify.
     return jwt.verify(token, config.api.jwtSecret, {
-      issuer: ISSUER,
+      issuer: [LOCAL_ISSUER, config.api.identityIssuer],
       algorithms: ["HS256"],
     }) as AccessTokenPayload;
   } catch (err) {

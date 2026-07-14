@@ -57,6 +57,13 @@ const ConfigSchema = z.object({
     jwtSecret: z.string().min(32, "JWT secret must be at least 32 characters"),
     accessTokenTtlMinutes: z.number().int().positive().default(15),
     refreshTokenTtlDays: z.number().int().positive().default(7),
+    // Identity mode mirrors QMS_IDENTITY_MODE (see src/identity/index.ts).
+    // In "http" mode the ID Server is the source of truth: the Agent verifies
+    // ID-Server-issued tokens and does NOT require a local user row.
+    identityMode: z.enum(["local", "http"]).default("local"),
+    // Issuer claim on tokens minted by the external ID Server. Accepted in
+    // addition to the Agent's own issuer so both login paths verify.
+    identityIssuer: z.string().min(1).default("rehamd-idserver"),
   }),
   qmsFolder: z.string().min(1),
   logLevel: z.enum(["debug", "info", "warn", "error"]).default("info"),
@@ -108,6 +115,8 @@ function loadConfig(): Config {
       jwtSecret: process.env.JWT_SECRET,
       accessTokenTtlMinutes: Number(process.env.ACCESS_TOKEN_TTL_MINUTES ?? 15),
       refreshTokenTtlDays: Number(process.env.REFRESH_TOKEN_TTL_DAYS ?? 7),
+      identityMode: (process.env.QMS_IDENTITY_MODE ?? "local").toLowerCase(),
+      identityIssuer: process.env.QMS_IDENTITY_ISSUER ?? "rehamd-idserver",
     },
     qmsFolder: process.env.QMS_FOLDER,
     logLevel: process.env.LOG_LEVEL,

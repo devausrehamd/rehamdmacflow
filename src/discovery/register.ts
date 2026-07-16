@@ -17,7 +17,7 @@ import { randomUUID } from "node:crypto";
 import { execSync } from "node:child_process";
 import { dirname } from "node:path";
 import { config, type AgentMode } from "../config.js";
-import { rubricSetHash } from "../drafting/rubric-loader.js";
+import { listRubricTypes, rubricSetHash } from "../drafting/rubric-loader.js";
 
 export interface RegisterConfig {
   discoveryUrl: string;
@@ -35,8 +35,13 @@ export interface RegisterConfig {
    *  Two agents that agree here genuinely serve identical rubrics; two that
    *  disagree do not, whatever their group label or git commit says. */
   rubricSetHash?: string;
-  observabilityUrl?: string;
+  /** The document types this agent can actually judge: DERIVED from the
+   *  committed rubrics it loaded, never configured. A hand-kept list drifts -
+   *  ours advertised "export-control" (which has no rubric and no code) while
+   *  omitting "risk-register" (which works), so an orchestrator routing on it
+   *  would have been wrong in both directions. */
   capabilities?: string[];
+  observabilityUrl?: string;
   registerToken?: string;
   guidFile?: string;
   heartbeatMs?: number;
@@ -145,6 +150,20 @@ function safeRubricSetHash(): string | undefined {
   }
 }
 
+/** The document types this agent has committed rubrics for, sorted.
+ *
+ *  Empty rather than a guess if the rubrics cannot be read: an agent that
+ *  advertises nothing is merely useless to a router, whereas one advertising a
+ *  type it cannot judge sends work to a dead end. Under-claiming is the safe
+ *  failure here. */
+function safeCapabilities(): string[] {
+  try {
+    return listRubricTypes().slice().sort();
+  } catch {
+    return [];
+  }
+}
+
 export function discoveryFromEnv(): DiscoveryClient | null {
   const discoveryUrl = process.env.QMS_DISCOVERY_URL;
   if (!discoveryUrl) return null;
@@ -172,8 +191,12 @@ export function discoveryFromEnv(): DiscoveryClient | null {
     // runtime. Never fatal: an agent with unreadable rubrics should still
     // register (and say so elsewhere) rather than vanish from Discovery.
     rubricSetHash: safeRubricSetHash(),
+    // Likewise derived. QMS_AGENT_CAPABILITIES used to supply this by hand and
+    // had drifted apart from reality in both directions, which is what any
+    // hand-maintained mirror of the code eventually does. An agent can judge a
+    // document type exactly when it has a rubric for it, so ask the loader.
+    capabilities: safeCapabilities(),
     observabilityUrl: process.env.LANGFUSE_BASE_URL,
-    capabilities: (process.env.QMS_AGENT_CAPABILITIES ?? "").split(",").filter(Boolean),
     registerToken: process.env.QMS_DISCOVERY_TOKEN,
     guidFile,
     heartbeatMs: Number(process.env.QMS_DISCOVERY_HEARTBEAT_MS ?? 10000),

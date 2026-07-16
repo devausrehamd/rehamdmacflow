@@ -55,21 +55,26 @@ export const patternRuleSchema = z.object({
 });
 
 /**
- * Every criterion must read: "PASS if <condition>. FAIL otherwise."
+ * Every criterion MUST read: "PASS if <condition>. FAIL otherwise."
  *
  * The judge returns one bit, so the rule has to name the passing condition and
- * nothing else. Prose like "failure modes should trace to a source" leaves the
- * model to infer where the line sits, and it will infer differently on
- * different runs - which is exactly what a coin-flip in the k-sampling report
- * IS. Forcing the author to write the boundary down converts a class of
- * ambiguity into a syntax error, caught at load rather than discovered as
- * 12/20 variance three weeks later.
+ * the trailing "FAIL otherwise." asserts it is EXHAUSTIVE - anything not
+ * described by the condition is a fail, not an open question. Prose like
+ * "failure modes should trace to a source" leaves the model to infer where the
+ * line sits, and it will infer differently on different runs, which is exactly
+ * what a coin-flip in the k-sampling report IS. Forcing the boundary to be
+ * written converts that ambiguity into a load error rather than 12/20 variance
+ * discovered three weeks later.
  *
- * The trailing "FAIL otherwise." is not decoration: it states that the
- * condition is exhaustive, so anything not described is a fail rather than an
- * open question.
+ * This is the single mandated form. A variant like "FAIL if <specific>." is
+ * rejected: what a fail looks like belongs in the `explanation` field (which
+ * the judge also sees), so the rule itself states one exhaustive boundary. That
+ * keeps every criterion in the corpus phrased identically.
+ *
+ * `PASS if` may be followed by a comma ("PASS if, for any failure, …") - a
+ * natural parenthetical, not a different form.
  */
-export const CRITERION_FORMAT = /^\s*PASS if\s+\S[\s\S]*\.\s*FAIL otherwise\.\s*$/;
+export const CRITERION_FORMAT = /^\s*PASS if\b[\s\S]*\.\s*FAIL otherwise\.\s*$/;
 
 export const criterionSchema = z
   .object({

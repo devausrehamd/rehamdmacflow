@@ -49,30 +49,76 @@ function loadOne(path: string): LoadedRubric {
   };
 }
 
-/** Load all rubrics from the directory into the in-memory cache. */
+/** A rubric file that failed to load, kept so the failure is visible rather
+ *  than silent. */
+export interface RubricLoadError {
+  file: string;
+  error: string;
+}
+
+let loadErrors: RubricLoadError[] = [];
+
+/** Rubric files that failed to load in the last loadRubrics(). Surfaced (e.g.
+ *  to the GUI) so a broken rubric is VISIBLE, not just absent - a document type
+ *  silently missing is a worse failure than one flagged as broken. */
+export function rubricLoadErrors(): RubricLoadError[] {
+  return loadErrors;
+}
+
+/**
+ * Load all rubrics from the directory into the in-memory cache.
+ *
+ * RESILIENT by design: a single malformed rubric file is EXCLUDED and recorded,
+ * not thrown - it must not take down every other document type. Rubrics are now
+ * authored externally (an agent generates them from the QMS), so one bad file
+ * would otherwise be a total outage: no rubric served, no generation, no
+ * review. The failure is still loud - logged here and exposed via
+ * rubricLoadErrors() - so "broken" never looks like "fine".
+ *
+ * A duplicate documentType is the one hard error kept: two files claiming the
+ * same type is ambiguous about which standard governs, and silently picking one
+ * would be worse than refusing both.
+ */
 export function loadRubrics(dir: string = RUBRICS_DIR): Map<string, LoadedRubric> {
   const map = new Map<string, LoadedRubric>();
+  const errors: RubricLoadError[] = [];
 
   if (!existsSync(dir)) {
     console.warn(`Rubrics directory '${dir}' not found - no rubrics loaded.`);
     cache = map;
+    loadErrors = errors;
     return map;
   }
 
   const files = readdirSync(dir).filter((f) => f.endsWith(".json"));
   for (const file of files) {
-    const loaded = loadOne(join(dir, file));
+    let loaded: LoadedRubric;
+    try {
+      loaded = loadOne(join(dir, file));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      errors.push({ file, error: message });
+      console.error(`Rubric '${file}' failed to load and was EXCLUDED:\n${message}`);
+      continue;
+    }
     const type = loaded.rubric.documentType;
-    if (map.has(type)) {
-      throw new Error(
-        `Duplicate rubric for document type '${type}' (${file} and ${map.get(type)!.sourcePath})`,
-      );
+    const existing = map.get(type);
+    if (existing) {
+      // Ambiguous which standard governs - exclude the later one and flag it.
+      const message = `Duplicate document type '${type}' (also in ${existing.sourcePath}); this file was excluded.`;
+      errors.push({ file, error: message });
+      console.error(message);
+      continue;
     }
     map.set(type, loaded);
   }
 
   cache = map;
-  console.log(`Loaded ${map.size} rubric(s): ${Array.from(map.keys()).join(", ") || "(none)"}`);
+  loadErrors = errors;
+  console.log(
+    `Loaded ${map.size} rubric(s): ${Array.from(map.keys()).join(", ") || "(none)"}` +
+      (errors.length ? ` | ${errors.length} EXCLUDED (see errors above)` : ""),
+  );
   return map;
 }
 

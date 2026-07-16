@@ -36,12 +36,16 @@ act on an ambiguous rule.
 
 ## 1. HARD RULES (violating any of these means the rubric will not load)
 
-1. **Every criterion's `criterion` text MUST match exactly:**
+1. **Every criterion's `criterion` text MUST be exactly:**
    `PASS if <condition>. FAIL otherwise.`
-   - It must start with `PASS if ` and end with `. FAIL otherwise.`
+   - It must start with `PASS if` and end with `. FAIL otherwise.`
+   - This is the ONE mandated form. Do NOT use `FAIL if <specific>.` — what a
+     fail looks like goes in the `explanation` field (the judge sees it too),
+     so the rule itself always states one exhaustive boundary.
    - `<condition>` states the passing condition **exhaustively** — everything
-     not described by it is a fail. That is what "FAIL otherwise" asserts.
-   - Regex the loader enforces: `^\s*PASS if\s+\S[\s\S]*\.\s*FAIL otherwise\.\s*$`
+     not described by it fails. That is what "FAIL otherwise" asserts.
+   - `PASS if` may be followed by a comma (`PASS if, for any failure, …`).
+   - Regex the loader enforces: `^\s*PASS if\b[\s\S]*\.\s*FAIL otherwise\.\s*$`
 
 2. **Every criterion needs a unique `id`** (kebab_or_snake, stable, meaningful).
 

@@ -268,8 +268,16 @@ export const draft_sets = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
 
     // Provenance: the request/query that triggered generation. Links a
-    // produced document back to the prompt that made it.
+    // produced document back to the prompt that made it. This is a query id
+    // (qry_<hex>) - it is NOT a user id, and must never be used to identify
+    // the author (that mistake is what silently disabled APPROVER != AUTHOR).
     originating_query_id: text("originating_query_id").notNull(),
+
+    // WHO triggered generation. The counterpart of the approver: the
+    // disposition endpoint refuses when these are the same person. Nullable
+    // only for rows predating this column - an unknown author FAILS CLOSED
+    // (unprovable independence means no approval), it does not pass.
+    author_id: varchar("author_id", { length: 64 }),
 
     // The document type - the hub that resolves generation prompt, rubric
     // bundle, threshold, and required sources.
@@ -303,6 +311,7 @@ export const draft_sets = pgTable(
     by_query: index("draft_sets_query_idx").on(table.originating_query_id),
     by_status: index("draft_sets_status_idx").on(table.status),
     by_type: index("draft_sets_type_idx").on(table.document_type),
+    by_author: index("draft_sets_author_idx").on(table.author_id),
   }),
 );
 

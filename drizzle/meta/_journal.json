@@ -78,6 +78,13 @@
       "when": 1718760010000,
       "tag": "0010_rubric_draft_batches",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1718760020000,
+      "tag": "0011_draft_set_author",
+      "breakpoints": true
     }
   ]
 }

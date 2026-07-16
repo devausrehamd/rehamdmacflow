@@ -33,6 +33,10 @@ export async function persistDraft(opts: {
   subject: string | null;
   correlationId: string;
   originatingQueryId: string;
+  /** WHO triggered generation. Recorded so the disposition endpoint can
+   *  enforce APPROVER != AUTHOR. Undefined only when the run has no
+   *  attributable user, in which case the set can never be approved. */
+  authorId?: string;
   bag: OutputBag;
   rubricResult?: RubricResult;
 }): Promise<PersistedDraft> {
@@ -44,6 +48,7 @@ export async function persistDraft(opts: {
     .insert(draft_sets)
     .values({
       originating_query_id: opts.originatingQueryId,
+      author_id: opts.authorId ?? null,
       document_type: opts.documentType,
       subject: opts.subject,
       rubric_version: loaded.rubric.version,

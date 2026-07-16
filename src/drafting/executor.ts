@@ -165,6 +165,10 @@ export async function executeRecipe(
             subject: persist.subject,
             correlationId: custody.correlationId,
             originatingQueryId: persist.originatingQueryId,
+            // The author IS whoever the custody context says triggered this
+            // run. Recording it here is what lets the disposition endpoint
+            // enforce APPROVER != AUTHOR.
+            authorId: custody.userId,
             bag,
             rubricResult,
           });

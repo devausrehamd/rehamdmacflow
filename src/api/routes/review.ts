@@ -20,7 +20,7 @@ import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
 import { eq, and, sql } from "drizzle-orm";
 import { requireAuth, requirePermission } from "../auth/middleware.js";
-import { ValidationError } from "../errors.js";
+import { ForbiddenError, ValidationError } from "../errors.js";
 import { db } from "../../db/client.js";
 import { draft_sets, draft_documents } from "../../db/schema.js";
 import { getRubric } from "../../drafting/rubric-loader.js";
@@ -122,21 +122,36 @@ reviewRouter.post(
       }
 
       const docs = await db.select().from(draft_documents).where(eq(draft_documents.correlation_id, correlationId));
-      if (docs.length === 0) { res.status(404).json({ error: "No draft for that correlation id." }); return; }
-      const [set] = await db.select().from(draft_sets).where(eq(draft_sets.id, docs[0].set_id));
+      const firstDoc = docs[0];
+      if (!firstDoc) { res.status(404).json({ error: "No draft for that correlation id." }); return; }
+      const [set] = await db.select().from(draft_sets).where(eq(draft_sets.id, firstDoc.set_id));
+      if (!set) { res.status(404).json({ error: "No draft set for that correlation id." }); return; }
 
       // APPROVER != AUTHOR. The person approving must not be the one who
-      // triggered generation - the independent check is the control.
-      if (set.originating_query_id.includes(req.ctx!.user.id)) {
-        throw new ValidationError("The approver must not be the author of the draft.");
+      // triggered generation - the independent check IS the control.
+      //
+      // This previously compared `originating_query_id` (a qry_<hex>) against a
+      // user id, which can never match, so the control silently never fired.
+      // The author is now recorded explicitly on the set.
+      //
+      // FAIL CLOSED on an unknown author: a set written before author_id
+      // existed cannot prove the approver is independent, so it cannot be
+      // approved. Unprovable independence is not independence.
+      if (!set.author_id) {
+        throw new ForbiddenError(
+          "This draft has no recorded author, so approver independence cannot be established. It cannot be approved.",
+        );
+      }
+      if (set.author_id === req.ctx!.user.id) {
+        throw new ForbiddenError("The approver must not be the author of the draft.");
       }
 
       const { rubric, contentHash } = getRubric(set.document_type);
       const custody = {
         correlationId,
         runId: req.ctx!.runId,
-        userId: set.originating_query_id, // the author, for context
-        approverId: req.ctx!.user.id, // WHO is approving - distinct
+        userId: set.author_id, // the AUTHOR - a real user id, not a query id
+        approverId: req.ctx!.user.id, // WHO is approving - distinct, and verified above
         decisionId: req.ctx!.decisionId,
         policyHash: req.ctx!.policyHash,
         rubricHash: contentHash,

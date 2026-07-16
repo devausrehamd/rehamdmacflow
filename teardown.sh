@@ -22,10 +22,27 @@ if [[ "${1:-}" == "--purge" ]]; then
     PURGE=true
 fi
 
+# Stop the QMS services first, before the infrastructure they depend on.
+#
+# Order matters: stopping Postgres or Redis underneath a running agent leaves it
+# throwing connection errors and, worse, makes the next `stack.sh status` read
+# as "running" when the process is alive but useless.
+step "Stopping QMS services (agent, discovery, ID server)"
+STACK_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/stack.sh"
+if [[ -x "$STACK_SH" ]]; then
+    "$STACK_SH" stop 2>/dev/null || warn "stack.sh stop reported a problem"
+else
+    info "stack.sh not found next to this repo; skipping (nothing to stop)"
+fi
+
 # Stop background services
 step "Stopping background services"
 brew services stop redis  2>/dev/null || warn "Redis service was not running"
 brew services stop ollama 2>/dev/null || warn "Ollama service was not running"
+# Postgres was started by setup.sh, so teardown has to stop it: a setup/teardown
+# pair that leaves a service running is not a teardown, and the asymmetry is
+# invisible until something else claims port 5432.
+brew services stop postgresql@17 2>/dev/null || warn "Postgres service was not running"
 info "Services stopped"
 
 # Stop Qdrant container (only if Colima/Docker is running)

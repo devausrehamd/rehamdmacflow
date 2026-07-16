@@ -36,7 +36,7 @@
     "smoke:dependency": "tsx scripts/smoke-test-dependency.ts",
     "smoke:subject": "tsx scripts/smoke-test-subject.ts",
     "smoke:custody": "tsx scripts/smoke-test-custody.ts",
-    "smoke:custody:e2e": "QMS_QDRANT_COLLECTION_OVERRIDE=qms_custody_e2e tsx scripts/smoke-test-custody-e2e.ts",
+    "smoke:custody:e2e": "QMS_QDRANT_COLLECTION_OVERRIDE=qms_custody_e2e tsx scripts/smoke-test-e2e.ts",
     "smoke:section": "tsx scripts/smoke-test-section.ts",
     "smoke:scoring": "tsx scripts/smoke-test-scoring.ts",
     "smoke:executor": "tsx scripts/smoke-test-executor.ts",

@@ -16,6 +16,7 @@
 // This is the seamstress sewing panels that were cut, sized, and marked.
 
 import { llm } from "../clients.js";
+import { checkTrajectory, type RecordedTrajectory } from "./trajectory-check.js";
 import { extractJson } from "../agent/parse.js";
 import type { Rubric } from "./rubric-schema.js";
 import { sectionSchema } from "./section-schema.js";
@@ -161,6 +162,7 @@ async function judge(
   step: Extract<Step, { kind: "judge" }>,
   bag: OutputBag,
   rubric: Rubric,
+  trajectory?: RecordedTrajectory,
 ): Promise<StepOutputs["judge"]> {
   const targetIds = step.criteria.length > 0 ? new Set(step.criteria) : null;
   const criteria = rubric.criteria.filter((c) => !targetIds || targetIds.has(c.id));
@@ -213,7 +215,12 @@ Return ONLY the JSON.`;
     }
   }
 
-  const result: RubricResult = scoreRubric(rubric, verdicts);
+  // Check what the run DID (the RecordedTrajectory) against what the rubric
+  // REQUIRED, then hand the verdict to scoring. checkTrajectory is the policy;
+  // scoreRubric makes a violation an AUTO FAIL regardless of how well the output
+  // scored. Omitted trajectory -> judged on output alone (backward compatible).
+  const trajectoryResult = trajectory ? checkTrajectory(rubric, trajectory) : undefined;
+  const result: RubricResult = scoreRubric(rubric, verdicts, rubric.reviewThreshold, trajectoryResult);
   return { result };
 }
 

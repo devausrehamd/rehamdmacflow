@@ -13,6 +13,8 @@
 // the model. Same interpreter either way.
 
 import type { Rubric } from "./rubric-schema.js";
+import type { RecordedTrajectory } from "./trajectory-check.js";
+import { assembleTrajectory } from "./trajectory-assemble.js";
 import type { Step } from "./recipe.js";
 import { validateRecipe } from "./recipe.js";
 import type { SectionValidation } from "./section-validator.js";
@@ -41,7 +43,7 @@ export interface StepHandlers {
   recall_prior(step: Extract<Step, { kind: "recall_prior" }>, bag: OutputBag): Promise<StepOutputs["recall_prior"]>;
   generate_section(step: Extract<Step, { kind: "generate_section" }>, bag: OutputBag, rubric: Rubric): Promise<StepOutputs["generate_section"]>;
   validate_section(step: Extract<Step, { kind: "validate_section" }>, bag: OutputBag, rubric: Rubric): Promise<StepOutputs["validate_section"]>;
-  judge(step: Extract<Step, { kind: "judge" }>, bag: OutputBag, rubric: Rubric): Promise<StepOutputs["judge"]>;
+  judge(step: Extract<Step, { kind: "judge" }>, bag: OutputBag, rubric: Rubric, trajectory?: RecordedTrajectory): Promise<StepOutputs["judge"]>;
   require_human(step: Extract<Step, { kind: "require_human" }>, bag: OutputBag): Promise<StepOutputs["require_human"]>;
 }
 
@@ -145,7 +147,19 @@ export async function executeRecipe(
         break;
       }
       case "judge": {
-        output = await handlers.judge(step, bag, rubric);
+        // Assemble what this run actually did from its recorded trace, so a
+        // required source that was never consulted becomes an auto-fail. Read by
+        // correlation id: the SAME key custody and the run trace share, so the
+        // judge is checked against the very run being judged.
+        //
+        // NOTE: this reads agent_run_steps, which is populated by the
+        // instrumented graph nodes. A generation run only supplies a trajectory
+        // here once its retrieval steps are themselves traced under this
+        // correlation id; until then `known` is false and the trajectory fails
+        // closed, which is the correct default (unproven provenance is not
+        // provenance) rather than a silent pass.
+        const trajectory = await assembleTrajectory(custody.correlationId);
+        output = await handlers.judge(step, bag, rubric, trajectory);
         rubricResult = (output as StepOutputs["judge"]).result;
         if (rubricResult.reviewRequired) reviewRequired = true;
         break;

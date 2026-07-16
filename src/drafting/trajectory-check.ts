@@ -21,14 +21,36 @@
 
 import type { Rubric, TrajectoryRule } from "./rubric-schema.js";
 
-/** What a run actually did, as recorded. Assembled from the run trace. */
+/** What a run actually did, as recorded. Assembled from the run trace.
+ *
+ *  `retrievedDocuments` holds a type-ish identifier per retrieved corpus
+ *  document - a slug derived from its filename, because the corpus assigns no
+ *  explicit type. A `document` rule is matched by TOKEN SUBSET against these
+ *  (see below), so `capa-procedure` is satisfied by a retrieved
+ *  `CAPA_Procedure_Rev3.docx` -> `capa-procedure-rev-3`. Token subset, not
+ *  equality, so a version suffix or a reorganised path does not break a rule. */
 export interface RecordedTrajectory {
-  /** Document types retrieved from the corpus during the run. */
-  documentTypes: string[];
-  /** Agents called, and what they were asked. */
+  /** Type-ish identifiers of documents retrieved from the corpus this run. */
+  retrievedDocuments: string[];
+  /** Agents called, and what they were asked. Empty until an agent-calling
+   *  node exists - so an `agent` rule fails closed, which is correct: a fact
+   *  that had to be fetched and was not is a fact that was invented. */
   agentCalls: { agent: string; query: string }[];
   /** False when the run's trajectory could not be established at all. */
   known: boolean;
+}
+
+/** Significant tokens of a slug/path: lowercase alphanumerics, short words
+ *  dropped. "CAPA_Procedure_Rev3.docx" -> {capa, procedure, rev3}. */
+function tokens(s: string): Set<string> {
+  return new Set(
+    s
+      .toLowerCase()
+      .replace(/\.[a-z0-9]+$/, "") // drop a file extension
+      .replace(/[^a-z0-9]+/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length > 2),
+  );
 }
 
 export interface TrajectoryFinding {
@@ -61,7 +83,17 @@ function describe(rule: TrajectoryRule): string {
 
 function satisfied(rule: TrajectoryRule, actual: RecordedTrajectory): boolean {
   if (rule.kind === "document") {
-    return actual.documentTypes.some((t) => norm(t) === norm(rule.documentType));
+    // Token subset: every significant token of the required type must appear in
+    // some retrieved document's identifier. This matches on what the document
+    // IS (capa + procedure) rather than exactly what it is called, so a version
+    // suffix or a moved directory does not silently fail a valid run.
+    const want = tokens(rule.documentType);
+    if (want.size === 0) return false;
+    return actual.retrievedDocuments.some((doc) => {
+      const have = tokens(doc);
+      for (const t of want) if (!have.has(t)) return false;
+      return true;
+    });
   }
   // An agent rule is satisfied by a call to that agent. The query is matched
   // loosely - the point is that the agent was ASKED about this, and an exact

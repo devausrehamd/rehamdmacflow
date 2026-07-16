@@ -1,0 +1,34 @@
+{
+  "registryVersion": "0.1.0",
+  "description": "Projects and document collections, resolved from what a document declares about itself. Alias matching is EXACT on word boundaries, never fuzzy: binding a risk register to the wrong project would silently satisfy the wrong prerequisite and pollute every cross-project aggregate.",
+
+  "projects": {
+    "summit": {
+      "displayName": "Project Summit",
+      "aliases": ["project summit", "summit"]
+    },
+    "denali": {
+      "displayName": "Project Denali",
+      "aliases": ["project denali", "denali"]
+    }
+  },
+
+  "collections": {
+    "risk-register": {
+      "displayName": "Risk Register",
+      "aliases": ["risk register", "risk log"],
+      "schemaContract": {
+        "requiredColumns": ["risk_id", "subsystem", "owner", "status", "score"],
+        "reason": "A cross-project aggregate unions members. A member missing a contract column cannot be unioned and is excluded and reported, not silently coerced."
+      }
+    },
+    "dfmea": {
+      "displayName": "Design FMEA",
+      "aliases": ["dfmea", "design fmea"],
+      "schemaContract": {
+        "requiredColumns": ["item", "failure_mode", "severity", "occurrence", "detection"],
+        "reason": "Rating scales must be comparable across members before they can be aggregated."
+      }
+    }
+  }
+}

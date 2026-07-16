@@ -15,6 +15,7 @@
 import type { Rubric } from "./rubric-schema.js";
 import type { RecordedTrajectory } from "./trajectory-check.js";
 import { assembleTrajectory } from "./trajectory-assemble.js";
+import { recordRunStep, runInScope } from "../agent/instrument.js";
 import type { Step } from "./recipe.js";
 import { validateRecipe } from "./recipe.js";
 import type { SectionValidation } from "./section-validator.js";
@@ -130,12 +131,26 @@ export async function executeRecipe(
   for (const step of steps) {
     let output: StepOutputs[keyof StepOutputs];
 
+    // Every step is recorded into the run trace (agent_run_steps), keyed by the
+    // custody correlation id, so a generation run leaves the SAME trace an ask
+    // run does - which is what lets the judge step below assemble a trajectory
+    // from what actually happened. `input` is the step's own config, not the
+    // whole bag: the bag grows unboundedly and each prior step's output is
+    // already recorded, so logging it again would bloat the trace for no gain.
+    const startedAt = Date.now();
+    const scope = { correlationId: custody.correlationId, runId: custody.runId, node: step.kind, userId: custody.userId };
+    const record = (out: unknown, status: "ok" | "error", error?: string) =>
+      recordRunStep({ ...scope, input: step, output: out, status, error, latencyMs: Date.now() - startedAt });
+
+    try {
     switch (step.kind) {
       case "retrieve_sections": output = await handlers.retrieve_sections(step, bag); break;
       case "query_table": output = await handlers.query_table(step, bag); break;
       case "recall_prior": output = await handlers.recall_prior(step, bag); break;
       case "generate_section": {
-        output = await handlers.generate_section(step, bag, rubric);
+        // Scoped so the section-generation model calls attribute to this step
+        // in the LLM trace, exactly as an ask-graph node's calls do.
+        output = await runInScope(scope, () => handlers.generate_section(step, bag, rubric));
         if ((output as StepOutputs["generate_section"]).validation.hasGaps ||
             (output as StepOutputs["generate_section"]).validation.hasErrors) reviewRequired = true;
         break;
@@ -150,16 +165,11 @@ export async function executeRecipe(
         // Assemble what this run actually did from its recorded trace, so a
         // required source that was never consulted becomes an auto-fail. Read by
         // correlation id: the SAME key custody and the run trace share, so the
-        // judge is checked against the very run being judged.
-        //
-        // NOTE: this reads agent_run_steps, which is populated by the
-        // instrumented graph nodes. A generation run only supplies a trajectory
-        // here once its retrieval steps are themselves traced under this
-        // correlation id; until then `known` is false and the trajectory fails
-        // closed, which is the correct default (unproven provenance is not
-        // provenance) rather than a silent pass.
+        // judge is checked against the very run being judged. The retrieval
+        // steps above have already been recorded by the time we reach here, so
+        // the trajectory sees them.
         const trajectory = await assembleTrajectory(custody.correlationId);
-        output = await handlers.judge(step, bag, rubric, trajectory);
+        output = await runInScope(scope, () => handlers.judge(step, bag, rubric, trajectory));
         rubricResult = (output as StepOutputs["judge"]).result;
         if (rubricResult.reviewRequired) reviewRequired = true;
         break;
@@ -188,6 +198,7 @@ export async function executeRecipe(
           });
         }
 
+        await record(output, "ok");
         await appendEvent(custody, "human_decision", {
           ...custodyPayload(step, output),
           ...(persisted ? { draftSetId: persisted.setId, documentIds: persisted.documentIds } : {}),
@@ -195,8 +206,16 @@ export async function executeRecipe(
         return { bag, reviewRequired, rubricResult, haltedForHuman: true, persisted };
       }
     }
+    } catch (err) {
+      // A step that threw is the most useful row in the trace - record it before
+      // rethrowing, or the trace stops exactly where the fault is. The recorder
+      // swallows its own write failure, so this cannot mask the original error.
+      await record(undefined, "error", err instanceof Error ? `${err.name}: ${err.message}` : String(err));
+      throw err;
+    }
 
     bag[step.id] = output;
+    await record(output, "ok");
 
     // One custody event per step - references only.
     const eventType =

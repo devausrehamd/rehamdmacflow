@@ -110,6 +110,44 @@ function identify(state: unknown): RunIdentity | null {
   return { correlationId, runId, queryId: s.queryId, userId: s?.ctx?.user?.id };
 }
 
+/** Record one step directly, for callers that are not graph nodes.
+ *
+ *  The graph is instrumented by wrapping node functions (`instrument`), but the
+ *  recipe executor dispatches steps in a switch rather than as wrapped
+ *  functions, and it holds the run identity in a custody context rather than in
+ *  graph state. So it records through here: same table, same redaction, same
+ *  seq handling, so a generation run's trace is indistinguishable in shape from
+ *  an ask run's. Swallows its own write failure (logged) - a diagnostic write
+ *  must never fail the step it observes. */
+export async function recordRunStep(args: {
+  correlationId: string;
+  runId: string;
+  userId?: string;
+  node: string;
+  input: unknown;
+  output: unknown;
+  status: "ok" | "error";
+  error?: string;
+  latencyMs: number;
+}): Promise<void> {
+  await recordStep({
+    id: { correlationId: args.correlationId, runId: args.runId, userId: args.userId },
+    node: args.node,
+    input: args.input,
+    output: args.output,
+    status: args.status,
+    error: args.error,
+    latencyMs: args.latencyMs,
+  }).catch((err: unknown) => console.error(`[instrument] failed to record step '${args.node}':`, err));
+}
+
+/** Run `fn` under a published run scope, so any LLM call it makes is attributed
+ *  to this node (the llm-trace callback reads the scope). Used by the recipe
+ *  executor to attribute generate_section / judge model calls. */
+export function runInScope<T>(scope: RunScope, fn: () => Promise<T>): Promise<T> {
+  return runScope.run(scope, fn);
+}
+
 async function recordStep(args: {
   id: RunIdentity;
   node: string;

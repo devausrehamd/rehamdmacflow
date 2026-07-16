@@ -54,25 +54,51 @@ export async function assembleTrajectory(correlationId: string): Promise<Recorde
   return assembleFromSteps(steps.map((s) => ({ node: s.node, output: s.output })));
 }
 
+// The node kinds through which corpus documents enter a run - across BOTH
+// execution paths. The ask graph retrieves via `retrieve`/`sql_retrieve`; the
+// recipe executor retrieves via `retrieve_sections`/`recall_prior`/`query_table`
+// (its step kinds are its node names in the trace). If none of these ran, the
+// run's trajectory is unknown, not empty.
+const RETRIEVAL_NODES = new Set([
+  "retrieve",
+  "sql_retrieve",
+  "retrieve_sections",
+  "recall_prior",
+  "query_table",
+]);
+
 /** The pure core, separated so it can be tested without a database. */
 export function assembleFromSteps(
   steps: { node: string; output: unknown }[],
 ): RecordedTrajectory {
-  // A retrieval node is where corpus documents enter the run. If none ran, the
-  // trajectory is unknown - we cannot say what was or was not consulted.
-  const retrievalSteps = steps.filter((s) => s.node === "retrieve" || s.node === "sql_retrieve");
+  const retrievalSteps = steps.filter((s) => RETRIEVAL_NODES.has(s.node));
   if (retrievalSteps.length === 0) {
     return { retrievedDocuments: [], agentCalls: [], known: false };
   }
 
-  const slugs = new Set<string>();
+  const docs = new Set<string>();
   for (const step of retrievalSteps) {
-    const byTier = (step.output as { chunksByTier?: Record<string, TracedChunk[]> } | null)?.chunksByTier;
-    if (!byTier) continue;
-    for (const chunks of Object.values(byTier)) {
-      for (const c of chunks ?? []) {
-        if (c.source_path) slugs.add(pathToSlug(c.source_path));
+    const out = step.output as Record<string, unknown> | null;
+    if (!out) continue;
+
+    // Ask-graph retrieve: chunks carry a source_path; slug the filename.
+    const byTier = out.chunksByTier as Record<string, TracedChunk[]> | undefined;
+    if (byTier) {
+      for (const chunks of Object.values(byTier)) {
+        for (const c of chunks ?? []) if (c.source_path) docs.add(pathToSlug(c.source_path));
       }
+    }
+
+    // Recipe recall_prior: names the document type DIRECTLY - the cleanest
+    // signal there is, no path guessing needed.
+    if (typeof out.documentType === "string" && out.documentType) {
+      docs.add(out.documentType);
+    }
+
+    // Recipe retrieve_sections: `source` is where the sections came from; slug
+    // it the same way as a chunk path.
+    if (typeof out.source === "string" && out.source) {
+      docs.add(pathToSlug(out.source));
     }
   }
 
@@ -81,7 +107,7 @@ export function assembleFromSteps(
   // `agent` trajectory rule fails closed until a web/A2A node exists to satisfy
   // it. A required fetched fact that was never fetched is a fabricated one.
   return {
-    retrievedDocuments: Array.from(slugs).sort(),
+    retrievedDocuments: Array.from(docs).sort(),
     agentCalls: [],
     known: true,
   };

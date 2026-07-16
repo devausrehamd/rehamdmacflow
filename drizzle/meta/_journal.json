@@ -85,6 +85,13 @@
       "when": 1718760020000,
       "tag": "0011_draft_set_author",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1718760030000,
+      "tag": "0012_custody_mode",
+      "breakpoints": true
     }
   ]
 }

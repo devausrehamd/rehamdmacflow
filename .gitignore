@@ -19,3 +19,8 @@ dist/
 
 # Logs
 *.log
+
+# Per-INSTANCE identity. The GUID names a running agent and its Discovery
+# lease hangs off it, so two clones sharing one GUID would clobber each
+# other in the registry. Generated on first start; never part of the codebase.
+identity/agent-guid*.txt

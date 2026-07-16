@@ -21,6 +21,7 @@ import type { Request, Response, NextFunction } from "express";
 import { eq, and, sql } from "drizzle-orm";
 import { requireAuth, requirePermission } from "../auth/middleware.js";
 import { ForbiddenError, ValidationError } from "../errors.js";
+import { producesControlledRecords } from "../../drafting/mode-gate.js";
 import { db } from "../../db/client.js";
 import { draft_sets, draft_documents } from "../../db/schema.js";
 import { getRubric } from "../../drafting/rubric-loader.js";
@@ -62,16 +63,18 @@ reviewRouter.get(
   "/api/v1/draft/:correlationId",
   requireAuth,
   requirePermission("draft:view-any"),
-  async (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request<{ correlationId: string }>, res: Response, next: NextFunction) => {
     try {
       const { correlationId } = req.params;
       const docs = await db
         .select()
         .from(draft_documents)
         .where(eq(draft_documents.correlation_id, correlationId));
-      if (docs.length === 0) { res.status(404).json({ error: "No draft for that correlation id." }); return; }
+      const firstDoc = docs[0];
+      if (!firstDoc) { res.status(404).json({ error: "No draft for that correlation id." }); return; }
 
-      const [set] = await db.select().from(draft_sets).where(eq(draft_sets.id, docs[0].set_id));
+      const [set] = await db.select().from(draft_sets).where(eq(draft_sets.id, firstDoc.set_id));
+      if (!set) { res.status(404).json({ error: "No draft set for that correlation id." }); return; }
       const { rubric } = getRubric(set.document_type);
 
       const rendered = docs.map((doc) => {
@@ -108,7 +111,7 @@ reviewRouter.post(
   "/api/v1/draft/:correlationId/disposition",
   requireAuth,
   requirePermission("draft:approve"),
-  async (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request<{ correlationId: string }>, res: Response, next: NextFunction) => {
     try {
       const { correlationId } = req.params;
       const { decision, reason, edits } = req.body as {
@@ -119,6 +122,17 @@ reviewRouter.post(
       };
       if (!["approve", "reject", "rerun"].includes(decision)) {
         throw new ValidationError("decision must be approve, reject, or rerun.");
+      }
+
+      // A debug instance may be running against uncommitted draft rubrics, so
+      // nothing it produced can become a controlled record. Rejecting and
+      // rerunning stay available - those are how you iterate - but APPROVAL is
+      // refused outright. Approval is the act that makes a document count.
+      if (decision === "approve" && !producesControlledRecords()) {
+        throw new ForbiddenError(
+          "This agent runs in debug mode; its output is provisional and cannot be approved. " +
+            "Approve on a production-mode agent.",
+        );
       }
 
       const docs = await db.select().from(draft_documents).where(eq(draft_documents.correlation_id, correlationId));

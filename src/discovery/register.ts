@@ -16,11 +16,15 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { execSync } from "node:child_process";
 import { dirname } from "node:path";
+import { config, type AgentMode } from "../config.js";
 
 export interface RegisterConfig {
   discoveryUrl: string;
   name: string;
   address: string;
+  /** production | debug. Advertised so the GUI can show which kind of agent
+   *  the user is about to edit against, and refuse to confuse the two. */
+  mode: AgentMode;
   observabilityUrl?: string;
   capabilities?: string[];
   registerToken?: string;
@@ -72,6 +76,7 @@ export class DiscoveryClient {
       name: this.cfg.name,
       gitCommit: this.commit,
       address: this.cfg.address,
+      mode: this.cfg.mode,
       observabilityUrl: this.cfg.observabilityUrl,
       capabilities: this.cfg.capabilities ?? [],
     };
@@ -120,13 +125,26 @@ export class DiscoveryClient {
 export function discoveryFromEnv(): DiscoveryClient | null {
   const discoveryUrl = process.env.QMS_DISCOVERY_URL;
   if (!discoveryUrl) return null;
+
+  // The GUID identifies a RUNNING INSTANCE, and the lease hangs off it. A
+  // production and a debug agent started from the same working directory would
+  // otherwise read the same guid file, register the same GUID, and each
+  // heartbeat would overwrite the other's address - Discovery would show one
+  // agent flapping between the two ports. So the guid file is scoped by mode.
+  // Production keeps the historical path, so its identity is unchanged.
+  const guidFile =
+    process.env.QMS_AGENT_GUID_FILE ??
+    (config.mode === "debug" ? "./identity/agent-guid-debug.txt" : "./identity/agent-guid.txt");
+
   return new DiscoveryClient({
     discoveryUrl,
-    name: process.env.QMS_AGENT_NAME ?? "QMS Agent",
+    name: process.env.QMS_AGENT_NAME ?? (config.mode === "debug" ? "QMS Agent (debug)" : "QMS Agent"),
     address: process.env.QMS_AGENT_ADDRESS ?? `http://localhost:${process.env.API_PORT ?? 4000}`,
+    mode: config.mode,
     observabilityUrl: process.env.LANGFUSE_BASE_URL,
     capabilities: (process.env.QMS_AGENT_CAPABILITIES ?? "").split(",").filter(Boolean),
     registerToken: process.env.QMS_DISCOVERY_TOKEN,
+    guidFile,
     heartbeatMs: Number(process.env.QMS_DISCOVERY_HEARTBEAT_MS ?? 10000),
   });
 }

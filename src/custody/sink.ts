@@ -45,6 +45,10 @@ export interface ProvenanceEnvelope {
   agentVersion: string;
   modelVersion: string;
   rubricHash?: string | null;
+  /** production | debug. A debug run may have been governed by an uncommitted
+   *  draft rubric, so the external record must carry the distinction too - the
+   *  auditor's system of record is the one that outlives this instance. */
+  mode?: string;
 
   // The event body - references only, never content/PII (immutable store).
   payload: Record<string, unknown>;

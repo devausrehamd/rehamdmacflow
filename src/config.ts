@@ -15,7 +15,30 @@
 import "dotenv/config";
 import { z } from "zod";
 
+/**
+ * The operating mode of THIS agent instance. Fixed for the life of the process:
+ * an instance is production or debug, it never becomes the other.
+ *
+ *   production - the default, and the only mode that can produce a controlled
+ *                record. Committed (git-backed) rubrics only.
+ *   debug      - for iterating on rubrics and the pipeline until output is good
+ *                enough. May load UNCOMMITTED draft rubrics. Everything it
+ *                produces is provisional and marked as such, indelibly.
+ *
+ * Deliberately NOT a runtime toggle. A toggle can flip mid-run, which makes the
+ * custody record ambiguous forever ("was this run debug?"), and it puts a
+ * control-relaxing switch one misclick away in production. Instead you run two
+ * instances on two ports; Discovery advertises the mode and the GUI shows which
+ * one you picked. Production therefore has no code path that relaxes controls,
+ * rather than a path that merely happens to be disabled.
+ */
+export const AGENT_MODES = ["production", "debug"] as const;
+export type AgentMode = (typeof AGENT_MODES)[number];
+
 const ConfigSchema = z.object({
+  // Defaults to production: the safe mode must be the one you get by omission.
+  mode: z.enum(AGENT_MODES),
+
   ollama: z.object({
     baseUrl: z.string().url(),
     model: z.string().min(1),
@@ -73,6 +96,13 @@ export type Config = z.infer<typeof ConfigSchema>;
 
 function loadConfig(): Config {
   const raw = {
+    // Fails safe: anything other than an explicit "debug" is production. An
+    // unset, misspelled, or garbled QMS_MODE must never silently yield the
+    // permissive mode. The zod enum then rejects a value that is neither, so a
+    // typo like QMS_MODE=Debug fails loudly at startup instead of quietly
+    // running production.
+    mode: process.env.QMS_MODE ?? "production",
+
     ollama: {
       baseUrl: process.env.OLLAMA_BASE_URL,
       model: process.env.OLLAMA_MODEL,

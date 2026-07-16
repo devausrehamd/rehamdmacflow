@@ -17,6 +17,7 @@
 
 import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
+import { config } from "../config.js";
 import { db } from "../db/client.js";
 import { custody_events } from "../db/schema.js";
 import { currentDomain } from "../identity/index.js";
@@ -75,7 +76,14 @@ function sortKeys(value: unknown): unknown {
   return value;
 }
 
-/** The exact bytes that get hashed for an entry. Shared by append and verify. */
+/** The exact bytes that get hashed for an entry. Shared by append and verify.
+ *
+ *  `mode` is OPTIONAL and must stay optional. Rows written before the mode
+ *  column existed were hashed without the field, so it has to be absent from
+ *  the canonical JSON - not null - for those entries to still verify. Callers
+ *  pass `mode: undefined` (or omit it) for such rows; JSON.stringify drops
+ *  undefined-valued keys, reproducing the original bytes exactly. Passing
+ *  `null` here would change the hash and report the whole chain as broken. */
 export function hashEntry(
   prevHash: string,
   event: {
@@ -86,6 +94,7 @@ export function hashEntry(
     user_id: string | null;
     decision_id: string | null;
     policy_hash: string | null;
+    mode?: string;
     payload: unknown;
   },
 ): string {
@@ -129,6 +138,9 @@ export async function appendEvent(
       user_id: ctx.userId ?? null,
       decision_id: ctx.decisionId ?? null,
       policy_hash: ctx.policyHash ?? null,
+      // The instance's mode, hashed in so it cannot be rewritten later. Every
+      // new entry carries it; only pre-existing rows lack it.
+      mode: config.mode,
       payload,
     };
 
@@ -139,7 +151,12 @@ export async function appendEvent(
       .values({ ...event, prev_hash: prevHash, entry_hash: entryHash })
       .returning({ seq: custody_events.seq });
 
-    return { seq: inserted[0].seq, entryHash, prevHash };
+    const row = inserted[0];
+    // An append that returns no row means the event was not chained. Failing
+    // loudly is the only safe option: silently carrying on would leave the
+    // caller believing custody was recorded when it was not.
+    if (!row) throw new Error("Custody append returned no row; the event was not recorded.");
+    return { seq: row.seq, entryHash, prevHash };
   });
 
   // Mirror to external provenance sink(s). The agent is ephemeral; the external
@@ -162,6 +179,7 @@ export async function appendEvent(
       agentVersion: AGENT_VERSION,
       modelVersion: MODEL_VERSION,
       rubricHash: ctx.rubricHash ?? null,
+      mode: config.mode,
       payload,
       recordedAt: new Date().toISOString(),
     };
@@ -219,6 +237,11 @@ export async function verifyChain(
       user_id: row.user_id,
       decision_id: row.decision_id,
       policy_hash: row.policy_hash,
+      // Reconstruct EXACTLY as appended. A row from before the mode column has
+      // mode NULL and was hashed with the field absent, so it must stay absent
+      // here - `?? undefined` collapses null to omitted. Passing the null
+      // straight through would fail every legacy entry.
+      mode: row.mode ?? undefined,
       payload: row.payload,
     });
     if (recomputed !== row.entry_hash) {

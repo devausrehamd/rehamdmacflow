@@ -609,6 +609,12 @@ export const custody_events = pgTable(
     decision_id: varchar("decision_id", { length: 64 }),
     policy_hash: varchar("policy_hash", { length: 64 }),
 
+    // Which mode the agent instance was running in: production | debug.
+    // Hashed into the chain, so it cannot be edited after the fact without
+    // breaking verification. Null means the row predates this column - that is
+    // "unknown", NOT "production".
+    mode: varchar("mode", { length: 16 }),
+
     // The event payload - REFERENCES ONLY. Chunk ids, query shape, scores,
     // pinned model/prompt/rubric hashes, output-document hash. Never text.
     payload: jsonb("payload").notNull(),
@@ -623,6 +629,7 @@ export const custody_events = pgTable(
     correlationIdx: index("custody_correlation_idx").on(t.correlation_id),
     runIdx: index("custody_run_idx").on(t.run_id),
     entryHashIdx: index("custody_entry_hash_idx").on(t.entry_hash),
+    modeIdx: index("custody_events_mode_idx").on(t.mode),
   }),
 );
 

@@ -789,3 +789,44 @@ export const agent_run_steps = pgTable(
     byTime: index("agent_run_steps_recorded_idx").on(t.recorded_at),
   }),
 );
+
+// ---------------------------------------------------------------------------
+// agent_llm_calls - every prompt sent to the model, and what came back.
+//
+// The last hole in the trace. agent_run_steps records what each NODE received
+// and returned, but a prompt is assembled inside a node and handed straight to
+// the client, so it never reaches the graph state and a state-level wrapper
+// cannot see it. Without this you can see that `draft` was handed twelve chunks
+// and produced a wrong answer, and still not know whether the chunk holding the
+// value ever made it into the prompt - which is exactly the difference between
+// "the model ignored what it was shown" and "the model was never shown it".
+//
+// Same rules as agent_run_steps: content, erasable, OUTSIDE the hash chain.
+// ---------------------------------------------------------------------------
+export const agent_llm_calls = pgTable(
+  "agent_llm_calls",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    correlation_id: varchar("correlation_id", { length: 64 }).notNull(),
+    run_id: varchar("run_id", { length: 64 }).notNull(),
+    // The node this call was made beneath. Attributed through the run scope, so
+    // a call from a helper several layers down still lands on its node.
+    node: varchar("node", { length: 64 }),
+    seq: integer("seq").notNull(),
+
+    // Exactly what the model was asked, and exactly what it answered.
+    model: varchar("model", { length: 128 }),
+    prompt: text("prompt").notNull(),
+    completion: text("completion"),
+
+    status: varchar("status", { length: 16 }).notNull().default("ok"),
+    error: text("error"),
+    latency_ms: integer("latency_ms").notNull().default(0),
+
+    user_id: varchar("user_id", { length: 64 }),
+    mode: varchar("mode", { length: 16 }),
+    recorded_at: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ byRun: index("agent_llm_calls_correlation_idx").on(t.correlation_id, t.seq) }),
+);

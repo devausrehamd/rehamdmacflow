@@ -16,10 +16,40 @@
 // split: erasable, outside the hash chain, droppable on a retention schedule
 // without touching custody's integrity.
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { sql } from "drizzle-orm";
 import { config } from "../config.js";
 import { db } from "../db/client.js";
 import { agent_run_steps } from "../db/schema.js";
+
+/**
+ * Which run, and which node, is executing right now.
+ *
+ * The prompt an LLM sees is assembled INSIDE a node and handed straight to the
+ * client, so it never appears in the graph state and a state-level wrapper
+ * cannot see it. Rather than thread a context argument through every node and
+ * every call site - which the next call site would forget - the node wrapper
+ * publishes its identity here, and the LLM client's callback reads it. Any
+ * `llm.invoke` made anywhere beneath a node is therefore attributable to that
+ * node, including from helpers several layers down.
+ *
+ * Empty outside a graph run (e.g. the k-sampling judge, which is not a graph
+ * node). Callers must treat "no store" as "not part of a run", never as an
+ * error - the batch judge records its own evidence through rubric_draft_batches.
+ */
+export interface RunScope {
+  correlationId: string;
+  runId: string;
+  node: string;
+  userId?: string;
+}
+
+const runScope = new AsyncLocalStorage<RunScope>();
+
+/** The run/node executing on this async context, if any. */
+export function currentRunScope(): RunScope | undefined {
+  return runScope.getStore();
+}
 
 /**
  * Keys whose VALUES must never be written to this table.
@@ -128,8 +158,16 @@ export function instrument<S, A extends unknown[], R>(
     const id = identify(state);
     const startedAt = Date.now();
 
+    // Publish who we are for the duration of the node, so any LLM call made
+    // beneath it - however deep - can be attributed back to this node and run.
+    const scope: RunScope | undefined = id
+      ? { correlationId: id.correlationId, runId: id.runId, node, userId: id.userId }
+      : undefined;
+    const withScope = <T>(f: () => Promise<T>): Promise<T> =>
+      scope ? runScope.run(scope, f) : f();
+
     try {
-      const output = await fn(state, ...args);
+      const output = await withScope(() => Promise.resolve(fn(state, ...args)));
       if (id) {
         await recordStep({ id, node, input: state, output, status: "ok", latencyMs: Date.now() - startedAt }).catch(
           (err: unknown) => console.error(`[instrument] failed to record step '${node}':`, err),

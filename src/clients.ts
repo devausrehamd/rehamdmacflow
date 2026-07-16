@@ -11,16 +11,27 @@ import { ChatOpenAI } from "@langchain/openai";
 import { QdrantClient } from "@qdrant/js-client-rest";
 import Redis from "ioredis";
 import { config } from "./config.js";
+import { LlmTraceCallback } from "./agent/llm-trace.js";
 
 // --- LLM client ---
 // Ollama exposes an OpenAI-compatible API, so we use ChatOpenAI
 // pointed at the local Ollama endpoint. The apiKey is required by
 // the SDK but Ollama ignores it.
+// Every llm.invoke in the codebase goes through THIS client - draft, reconcile,
+// the SQL planner, the section generator, the judge - so the trace callback is
+// attached here rather than at each call site. One attachment captures every
+// prompt and completion; per-call-site recording would be seven edits today and
+// a silent gap the first time someone adds an eighth.
+//
+// The callback only records calls made inside a graph run (it reads the run
+// scope the node wrapper publishes) and swallows its own errors, so it can
+// never fail the model call it is observing.
 export const llm = new ChatOpenAI({
   model: config.ollama.model,
   configuration: { baseURL: config.ollama.baseUrl },
   apiKey: "ollama-no-key-needed",
   temperature: 0.2,
+  callbacks: [new LlmTraceCallback()],
 });
 
 // --- Qdrant client ---

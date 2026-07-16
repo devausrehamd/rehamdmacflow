@@ -22,7 +22,7 @@ import type { Request, Response, NextFunction } from "express";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { requireAuth, requirePermission } from "../auth/middleware.js";
 import { db } from "../../db/client.js";
-import { agent_run_steps } from "../../db/schema.js";
+import { agent_llm_calls, agent_run_steps } from "../../db/schema.js";
 import { hasPermission } from "../../tiers.js";
 
 export const runsRouter = Router();
@@ -94,6 +94,24 @@ runsRouter.get(
         return;
       }
 
+      // The prompts made during this run, attached to the node that made them.
+      // Fetched alongside the steps so the trace is one round trip: a viewer
+      // that had to ask separately would invite showing steps without prompts,
+      // which is the half that cannot answer "was it in the prompt?".
+      const calls = await db
+        .select()
+        .from(agent_llm_calls)
+        .where(eq(agent_llm_calls.correlation_id, correlationId))
+        .orderBy(agent_llm_calls.seq);
+
+      const callsByNode = new Map<string, typeof calls>();
+      for (const c of calls) {
+        const key = c.node ?? "(unattributed)";
+        const list = callsByNode.get(key) ?? [];
+        list.push(c);
+        callsByNode.set(key, list);
+      }
+
       res.json({
         correlationId,
         runId: first.run_id,
@@ -109,6 +127,15 @@ runsRouter.get(
           recordedAt: s.recorded_at,
           input: s.input,
           output: s.output,
+          llmCalls: (callsByNode.get(s.node) ?? []).map((c) => ({
+            seq: c.seq,
+            model: c.model,
+            prompt: c.prompt,
+            completion: c.completion,
+            status: c.status,
+            error: c.error,
+            latencyMs: c.latency_ms,
+          })),
         })),
       });
     } catch (err) {

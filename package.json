@@ -41,7 +41,9 @@
     "smoke:scoring": "tsx scripts/smoke-test-scoring.ts",
     "smoke:executor": "tsx scripts/smoke-test-executor.ts",
     "smoke:draft-e2e": "tsx scripts/smoke-test-draft-e2e.ts",
-    "smoke:review": "tsx scripts/smoke-test-review.ts"
+    "smoke:review": "tsx scripts/smoke-test-review.ts",
+    "smoke:rubric-api": "tsx scripts/smoke-test-rubric-api.ts",
+    "smoke:batch": "tsx scripts/smoke-test-batch.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.1.48",
@@ -49,8 +51,10 @@
     "@langchain/openai": "^1.5.0",
     "@qdrant/js-client-rest": "^1.12.0",
     "bcrypt": "^5.1.1",
+    "cors": "^2.8.6",
     "dotenv": "^16.4.0",
     "drizzle-orm": "^0.36.0",
+    "exceljs": "^4.4.0",
     "express": "^5.0.1",
     "ioredis": "^5.4.0",
     "jsonwebtoken": "^9.0.2",
@@ -59,12 +63,12 @@
     "minimatch": "^10.0.0",
     "pdf-parse": "^1.1.1",
     "pg": "^8.13.0",
-    "exceljs": "^4.4.0",
     "xlsx": "^0.18.5",
     "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.0",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.10.0",

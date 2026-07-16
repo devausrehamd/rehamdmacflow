@@ -1,0 +1,24 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../idserver"
+		},
+		{
+			"path": "../discovery"
+		}
+	],
+	"settings": {
+		"terminal.integrated.defaultProfile.osx": "zsh",
+		"terminal.integrated.profiles.osx": {
+			"zsh": {
+				"path": "/bin/zsh",
+				"args": [
+					"-l"
+				]
+			}
+		}
+	}
+}

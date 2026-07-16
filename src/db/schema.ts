@@ -633,3 +633,76 @@ export const custody_anchors = pgTable("custody_anchors", {
   proof: text("proof").notNull(),
   anchored_at: timestamp("anchored_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// Rubric drafts — the GUI's STAGING area.
+//
+// Committed rubrics live in rubrics/*.json, in git, hashed, governing real
+// evaluations. Those are read-only over the API. THESE are provisional drafts
+// authored in the GUI, tested, and later exported to JSON and checked into git
+// by hand. Git is the approval gate; the API never promotes a draft to
+// committed. The evaluation pipeline physically cannot load from this table -
+// it only reads rubrics/*.json - so a half-baked draft can never judge a real
+// document.
+// ---------------------------------------------------------------------------
+
+export const rubric_drafts = pgTable(
+  "rubric_drafts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    // The document type this draft targets (may or may not already exist as a
+    // committed rubric - a draft can be a brand-new document type).
+    document_type: varchar("document_type", { length: 64 }).notNull(),
+
+    // Who is authoring this draft. Drafts are per-author staging.
+    author_id: varchar("author_id", { length: 64 }).notNull(),
+
+    // The draft rubric JSON, exactly as it will be validated and eventually
+    // exported. Not hashed for custody - it governs nothing until committed.
+    content: jsonb("content").notNull(),
+
+    // draft | validated - purely informational; validation never commits.
+    status: varchar("status", { length: 16 }).notNull().default("draft"),
+
+    // Last validation result, so the GUI can show errors without re-running.
+    validation: jsonb("validation"),
+
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byAuthor: index("rubric_drafts_author_idx").on(t.author_id),
+    byType: index("rubric_drafts_type_idx").on(t.document_type),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Rubric draft batches — the k-sampling steering record.
+//
+// A single judge run has ~40% variance, so a criterion's true behaviour is a
+// pass RATE over k runs, not one verdict. Each batch records k runs against one
+// document, per-criterion pass counts, and the score distribution, so the
+// editor can compare batches across their own iterations and see whether a
+// wording change moved a rate beyond the noise.
+// ---------------------------------------------------------------------------
+
+export const rubric_draft_batches = pgTable(
+  "rubric_draft_batches",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    draft_id: uuid("draft_id").notNull().references(() => rubric_drafts.id, { onDelete: "cascade" }),
+
+    // What was scored - a reference to the document text/rows used, recorded so
+    // the run is reproducible and comparable (same document across batches).
+    document_ref: varchar("document_ref", { length: 128 }).notNull(),
+
+    k: integer("k").notNull(),
+
+    // The aggregated BatchStats: per-criterion rates+CIs+stability, score dist.
+    stats: jsonb("stats").notNull(),
+
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ byDraft: index("rubric_draft_batches_draft_idx").on(t.draft_id) }),
+);

@@ -1,12 +1,13 @@
 // src/api/server.ts
 //
 // Express application. Wires up middleware in the correct order:
-//   1. JSON parser
-//   2. Request ID (for log correlation)
-//   3. Audit logging (records every request)
-//   4. Routes (public health + /api/v1/auth/*)
-//   5. 404 handler (catches unmatched routes)
-//   6. Error handler (LAST, converts thrown errors to JSON responses)
+//   1. CORS (first: a preflight must be answered before anything else runs)
+//   2. JSON parser
+//   3. Request ID (for log correlation)
+//   4. Audit logging (records every request)
+//   5. Routes (public health + /api/v1/auth/*)
+//   6. 404 handler (catches unmatched routes)
+//   7. Error handler (LAST, converts thrown errors to JSON responses)
 //
 // Auth routes implemented in this batch:
 //   POST /api/v1/auth/login    - email + password -> tokens
@@ -16,6 +17,7 @@
 //
 // Agent endpoints (/ask, /drafts, etc.) come in batch 3.
 
+import cors from "cors";
 import express, { type Request, type Response } from "express";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
@@ -38,7 +40,9 @@ import { askRouter } from "./routes/ask.js";
 import { dataRouter } from "./routes/data.js";
 import { custodyRouter } from "./routes/custody.js";
 import { reviewRouter } from "./routes/review.js";
+import { rubricsRouter } from "./routes/rubrics.js";
 import { configureProvenanceSinks, provenanceSinksFromEnv } from "../custody/sink.js";
+import { discoveryFromEnv } from "../discovery/register.js";
 
 export function createServer() {
   const app = express();
@@ -47,6 +51,36 @@ export function createServer() {
   // every custody event is also POSTed to that durable service - the auditor's
   // system of record, which outlives this ephemeral agent instance.
   configureProvenanceSinks(provenanceSinksFromEnv());
+
+  // ----- CORS (must run before anything else) -----
+  //
+  // The GUI is a browser client that resolves this agent's address from
+  // Discovery and then calls it DIRECTLY, cross-origin. Without these headers
+  // the browser blocks every call, so this is a precondition of the GUI
+  // working at all - not a convenience.
+  //
+  // An ALLOWLIST, not a wildcard. `*` would let any page a user happens to
+  // visit call this agent with their browser; it would also silently forbid
+  // the Authorization header we require. Requests with no Origin (curl, tests,
+  // service-to-service) pass through untouched - CORS is a browser mechanism.
+  //
+  // This is NOT an auth boundary. It governs which browser origins may read a
+  // response; requireAuth/requirePermission still gate every route, and a
+  // non-browser client can ignore CORS entirely. Never treat it as a gate.
+  const corsOrigins = (process.env.CORS_ORIGINS ?? "http://localhost:5173")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  app.use(
+    cors({
+      origin: corsOrigins,
+      methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id"],
+      // Let the GUI correlate a response with this agent's audit log line.
+      exposedHeaders: ["X-Request-Id"],
+    }),
+  );
 
   app.use(express.json({ limit: "10mb" }));
 
@@ -235,6 +269,7 @@ export function createServer() {
   app.use(dataRouter);
   app.use(custodyRouter);
   app.use(reviewRouter);
+  app.use(rubricsRouter);
 
   // 404 for unmatched routes
   app.use((req, res) => {
@@ -256,6 +291,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const app = createServer();
   const port = config.api.port;
 
+  // Discovery registration client (null if QMS_DISCOVERY_URL is unset).
+  const discovery = discoveryFromEnv();
+
   const server = app.listen(port, () => {
     console.log(`QMS Agent API listening on http://localhost:${port}`);
     console.log(`  Health:  GET    http://localhost:${port}/health`);
@@ -264,11 +302,17 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.log(`  Logout:  POST   http://localhost:${port}/api/v1/auth/logout`);
     console.log(`  Whoami:  GET    http://localhost:${port}/api/v1/whoami`);
     console.log(`  Ask:     POST   http://localhost:${port}/api/v1/ask  (SSE stream)`);
+
+    // Announce this agent to the Discovery service, if configured. Non-fatal:
+    // the agent serves requests whether or not Discovery is up - it just isn't
+    // listed until Discovery is reachable and the next heartbeat lands.
+    void discovery?.start();
   });
 
   // Graceful shutdown on SIGTERM/SIGINT
   const shutdown = async (signal: string) => {
     console.log(`\nReceived ${signal}, shutting down gracefully...`);
+    await discovery?.stop(); // deregister from Discovery so it drops us promptly
     server.close(() => {
       console.log("HTTP server closed");
       process.exit(0);

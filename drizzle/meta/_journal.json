@@ -64,6 +64,20 @@
       "when": 1718760008000,
       "tag": "0008_draft_typed_rows",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1718760009000,
+      "tag": "0009_rubric_drafts",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1718760010000,
+      "tag": "0010_rubric_draft_batches",
+      "breakpoints": true
     }
   ]
 }

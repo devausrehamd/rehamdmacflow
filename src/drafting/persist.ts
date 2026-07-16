@@ -56,6 +56,7 @@ export async function persistDraft(opts: {
       status: "pending_review",
     })
     .returning({ id: draft_sets.id });
+  if (!set) throw new Error("Draft set insert returned no row; the draft was not persisted.");
 
   // Collect the criterion result once (it applies to the whole set/document).
   const criterionResults = opts.rubricResult
@@ -66,6 +67,11 @@ export async function persistDraft(opts: {
         reviewRequired: opts.rubricResult.reviewRequired,
         criticalFailures: opts.rubricResult.criticalFailures,
         primaryFailures: opts.rubricResult.primaryFailures,
+        // The trajectory verdict, so a reviewer can see WHY a document was
+        // auto-failed - "the FMEA procedure was never consulted" is the whole
+        // reason a perfect-scoring draft is not approved, and omitting it here
+        // would leave the reviewer staring at a high score with no explanation.
+        trajectory: opts.rubricResult.trajectory ?? null,
         perCriterion: opts.rubricResult.perCriterion,
       }
     : null;
@@ -101,6 +107,7 @@ export async function persistDraft(opts: {
         annotations,
       })
       .returning({ id: draft_documents.id });
+    if (!doc) throw new Error("Draft document insert returned no row.");
 
     documentIds.push(doc.id);
   }

@@ -41,16 +41,23 @@ reviewRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const status = (req.query.status as string) ?? "pending_review";
+      // Include the correlation id: the review detail endpoint is keyed by it,
+      // and all documents in a set share one. Without it the queue could list a
+      // draft but not link to it - a dangling entry. Joined via the set's
+      // documents (min() collapses the shared value to one row per set).
       const rows = await db
         .select({
           setId: draft_sets.id,
+          correlationId: sql<string | null>`min(${draft_documents.correlation_id})`,
           documentType: draft_sets.document_type,
           subject: draft_sets.subject,
           status: draft_sets.status,
           createdAt: draft_sets.created_at,
         })
         .from(draft_sets)
+        .leftJoin(draft_documents, eq(draft_documents.set_id, draft_sets.id))
         .where(eq(draft_sets.status, status))
+        .groupBy(draft_sets.id)
         .orderBy(sql`${draft_sets.created_at} DESC`)
         .limit(100);
       res.json({ drafts: rows });

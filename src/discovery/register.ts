@@ -17,6 +17,7 @@ import { randomUUID } from "node:crypto";
 import { execSync } from "node:child_process";
 import { dirname } from "node:path";
 import { config, type AgentMode } from "../config.js";
+import { rubricSetHash } from "../drafting/rubric-loader.js";
 
 export interface RegisterConfig {
   discoveryUrl: string;
@@ -25,6 +26,15 @@ export interface RegisterConfig {
   /** production | debug. Advertised so the GUI can show which kind of agent
    *  the user is about to edit against, and refuse to confuse the two. */
   mode: AgentMode;
+  /** The deployment these instances belong to, e.g. "denali-dfmea". A
+   *  production and a debug agent sharing a group are two views of one setup,
+   *  and the GUI lists them together. This is a LABEL an operator sets - it is
+   *  a claim of intent, not proof; `rubricSetHash` is the proof. */
+  group?: string;
+  /** Fingerprint of the committed rubric set this instance actually loaded.
+   *  Two agents that agree here genuinely serve identical rubrics; two that
+   *  disagree do not, whatever their group label or git commit says. */
+  rubricSetHash?: string;
   observabilityUrl?: string;
   capabilities?: string[];
   registerToken?: string;
@@ -77,6 +87,8 @@ export class DiscoveryClient {
       gitCommit: this.commit,
       address: this.cfg.address,
       mode: this.cfg.mode,
+      group: this.cfg.group,
+      rubricSetHash: this.cfg.rubricSetHash,
       observabilityUrl: this.cfg.observabilityUrl,
       capabilities: this.cfg.capabilities ?? [],
     };
@@ -122,6 +134,17 @@ export class DiscoveryClient {
   }
 }
 
+/** The rubric-set fingerprint, or undefined if the set cannot be read. A
+ *  missing fingerprint means "unknown", and the GUI must not read that as
+ *  agreement with anything. */
+function safeRubricSetHash(): string | undefined {
+  try {
+    return rubricSetHash();
+  } catch {
+    return undefined;
+  }
+}
+
 export function discoveryFromEnv(): DiscoveryClient | null {
   const discoveryUrl = process.env.QMS_DISCOVERY_URL;
   if (!discoveryUrl) return null;
@@ -141,6 +164,14 @@ export function discoveryFromEnv(): DiscoveryClient | null {
     name: process.env.QMS_AGENT_NAME ?? (config.mode === "debug" ? "QMS Agent (debug)" : "QMS Agent"),
     address: process.env.QMS_AGENT_ADDRESS ?? `http://localhost:${process.env.API_PORT ?? 4000}`,
     mode: config.mode,
+    // Both instances of one deployment set the SAME group, so the GUI can list
+    // them together. Left undefined the agent simply stands alone.
+    group: process.env.QMS_AGENT_GROUP,
+    // Computed, not configured - the one value here an operator cannot get
+    // wrong. Read at startup; rubrics are git files and do not change at
+    // runtime. Never fatal: an agent with unreadable rubrics should still
+    // register (and say so elsewhere) rather than vanish from Discovery.
+    rubricSetHash: safeRubricSetHash(),
     observabilityUrl: process.env.LANGFUSE_BASE_URL,
     capabilities: (process.env.QMS_AGENT_CAPABILITIES ?? "").split(",").filter(Boolean),
     registerToken: process.env.QMS_DISCOVERY_TOKEN,

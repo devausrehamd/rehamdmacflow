@@ -93,6 +93,29 @@ export function listRubricTypes(): string[] {
   return Array.from(cache!.keys());
 }
 
+/**
+ * A fingerprint of the ENTIRE committed rubric set: sha256 over each
+ * documentType and its content hash, in sorted order.
+ *
+ * This exists to answer "am I editing the same rubrics on these two agents?"
+ * with a fact rather than a promise. A group label is a claim an operator
+ * types, and a git commit is only HEAD as it was when the process started - it
+ * says nothing about a dirty working tree, and two instances running identical
+ * code can advertise different commits. This hashes the rubric files the agent
+ * actually loaded, so two agents share a fingerprint only if they genuinely
+ * serve byte-identical rubrics.
+ *
+ * It deliberately covers the committed set only. Drafts live in Postgres and
+ * are not part of what this identifies.
+ */
+export function rubricSetHash(): string {
+  if (!cache) loadRubrics();
+  const parts = Array.from(cache!.entries())
+    .map(([type, loaded]) => `${type}:${loaded.contentHash}`)
+    .sort();
+  return createHash("sha256").update(parts.join("\n"), "utf8").digest("hex");
+}
+
 /** Total objective weight for a rubric - the denominator of the score. */
 export function totalObjectiveWeight(rubric: Rubric): number {
   // Sum of all scoring weight (every non-advisory criterion). The denominator

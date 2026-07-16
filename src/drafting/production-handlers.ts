@@ -17,6 +17,7 @@
 
 import { and, eq } from "drizzle-orm";
 import type { RequestContext } from "../context.js";
+import { enforceLabels } from "../identity/index.js";
 import { getDefaultServices } from "../services.js";
 import { db } from "../db/client.js";
 import { draft_sets, draft_documents } from "../db/schema.js";
@@ -31,10 +32,16 @@ interface QdrantPoint {
   payload?: Record<string, unknown> | null;
 }
 
-/** Do the caller's labels permit this chunk? An artifact is visible iff its
- *  access_labels intersect the caller's set. Fail closed: a chunk with no
- *  labels recorded is treated as restricted, not public. */
+/** Do the caller's labels permit this chunk?
+ *
+ *  Must match the ask graph's retrieve node exactly, or generation would apply
+ *  a DIFFERENT visibility rule than questioning does over the same corpus. The
+ *  graph gates on labels only when QMS_ENFORCE_LABELS is on; when off, every
+ *  chunk is visible. When on, an artifact is visible iff its access_labels
+ *  intersect the caller's set, and a chunk with NO labels is invisible to
+ *  everyone - fail closed by construction. */
 function permitted(payload: Record<string, unknown> | null | undefined, labels: string[]): boolean {
+  if (!enforceLabels()) return true;
   const chunkLabels = (payload?.access_labels as string[] | undefined) ?? [];
   if (chunkLabels.length === 0) return false;
   return chunkLabels.some((l) => labels.includes(l));

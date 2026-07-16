@@ -45,9 +45,9 @@ async function getCollectionInfo(name: string) {
 }
 
 async function main(): Promise<void> {
-  const collectionName = config.qdrant.collection;
+  const collectionName = config.qdrant.operations.collection;
 
-  console.log(`Target Qdrant: ${config.qdrant.url}`);
+  console.log(`Target Qdrant: ${config.qdrant.operations.url}`);
   console.log(`Target collection: ${collectionName}`);
 
   // Check current state

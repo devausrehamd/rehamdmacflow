@@ -24,8 +24,12 @@ export const llm = new ChatOpenAI({
 });
 
 // --- Qdrant client ---
+// NOTE: the config is tier-aware (qdrant.operations.url). Reading the old flat
+// `config.qdrant.url` yields undefined, and the client then silently falls back
+// to its own localhost default - so QDRANT_URL appeared to work locally while
+// being ignored entirely. Always go through the tier.
 export const qdrant = new QdrantClient({
-  url: config.qdrant.url,
+  url: config.qdrant.operations.url,
   // Optional: increase if you start hitting timeouts on large upserts
   // timeout: 60_000,
 });
@@ -35,8 +39,8 @@ export const qdrant = new QdrantClient({
 // than retry forever when the server is unreachable. The connection
 // itself will still try to reconnect transparently.
 export const redis = new Redis({
-  host: config.redis.host,
-  port: config.redis.port,
+  host: config.redis.operations.host,
+  port: config.redis.operations.port,
   maxRetriesPerRequest: 1,
 });
 

@@ -24,9 +24,9 @@ async function smokeTest(): Promise<void> {
   console.log(`  Ollama:     ${config.ollama.baseUrl}`);
   console.log(`              model=${config.ollama.model}`);
   console.log(`              embed=${config.ollama.embedModel}`);
-  console.log(`  Qdrant:     ${config.qdrant.url}`);
-  console.log(`              collection=${config.qdrant.collection}`);
-  console.log(`  Redis:      ${config.redis.host}:${config.redis.port}`);
+  console.log(`  Qdrant:     ${config.qdrant.operations.url}`);
+  console.log(`              collection=${config.qdrant.operations.collection}`);
+  console.log(`  Redis:      ${config.redis.operations.host}:${config.redis.operations.port}`);
   console.log(`  QMS folder: ${config.qmsFolder}`);
 
   // LLM endpoint
@@ -50,13 +50,13 @@ async function smokeTest(): Promise<void> {
   const collections = await qdrant.getCollections();
   console.log(`  Total collections: ${collections.collections.length}`);
   const matched = collections.collections.find(
-    (c) => c.name === config.qdrant.collection,
+    (c) => c.name === config.qdrant.operations.collection,
   );
   if (matched) {
-    const info = await qdrant.getCollection(config.qdrant.collection);
-    console.log(`  ${config.qdrant.collection}: ${info.points_count ?? 0} points`);
+    const info = await qdrant.getCollection(config.qdrant.operations.collection);
+    console.log(`  ${config.qdrant.operations.collection}: ${info.points_count ?? 0} points`);
   } else {
-    console.log(`  ${config.qdrant.collection}: not yet created`);
+    console.log(`  ${config.qdrant.operations.collection}: not yet created`);
     console.log(`    Run: npm run ingest:repo`);
   }
 

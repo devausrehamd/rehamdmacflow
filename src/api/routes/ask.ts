@@ -30,7 +30,6 @@ import { z } from "zod";
 import { requireAuth, requirePermission } from "../auth/middleware.js";
 import { ValidationError } from "../errors.js";
 import { QueryRecord } from "../../queries.js";
-import { CORRELATION_HEADER } from "../../custody/correlation.js";
 import { appendEvent } from "../../custody/ledger.js";
 import { createHash } from "node:crypto";
 import { agent } from "../../agent/graph.js";
@@ -56,9 +55,24 @@ askRouter.post(
     }
     const { question } = parsed.data;
 
-    // Classifier - draft mode not yet implemented in v1
-    const mode = classify(question);
-    if (mode === "draft") {
+    // Classifier. `classify` returns a discriminated union - switch on
+    // `.mode`, never on the object itself. Comparing the object to a string
+    // silently made BOTH refusals below unreachable: draft requests fell
+    // through into the ask graph, and the multi-deliverable refusal never
+    // fired at all.
+    const classification = classify(question);
+
+    // Ambiguous: the classifier authored a specific message explaining why it
+    // will not proceed (two deliverables in one task, or a document type it has
+    // no rubric for). Surface that verbatim rather than a generic error.
+    if (classification.mode === "ambiguous") {
+      return next(new ValidationError(classification.message));
+    }
+
+    // Draft mode is not implemented in v1: the recipe executor has no caller on
+    // this path yet, so a draft request must be refused rather than quietly
+    // answered as if it were a question.
+    if (classification.mode === "draft") {
       return next(
         new ValidationError(
           "Draft mode not yet implemented. Use ask mode (questions, not document generation requests).",
@@ -127,7 +141,9 @@ askRouter.post(
       queryId = query.id;
       sendEvent("started", {
         queryId: query.id,
-        mode,
+        // The discriminant only - shipping the whole Classification object here
+        // leaked the classifier's internals into the event stream.
+        mode: classification.mode,
         question,
         correlationId: req.ctx!.correlationId,
       });

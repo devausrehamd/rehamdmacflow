@@ -1,0 +1,260 @@
+{
+  "documentType": "supplier-qualification",
+  "displayName": "Supplier Qualification Report",
+  "version": "0.1.0",
+  "aliases": [
+    "supplier qualification",
+    "supplier qualification report",
+    "supplier qualification package",
+    "asl qualification",
+    "vendor qualification"
+  ],
+  "reviewThreshold": 0.85,
+  "requires": [],
+  "exports": {
+    "qualificationResult": {
+      "description": "The supplier's gate results and decision so a downstream ASL entry or audit can cite the qualification structurally.",
+      "schema": "{ supplier: string, paydex: int, financialsYears: int, qmsCert: string, segment: string, scorecard: number, decision: string }"
+    }
+  },
+  "criteria": [
+    {
+      "id": "paydex_hard_gate",
+      "criterion": "PASS if the D&B PAYDEX score is verified as ≥70 using a report dated within 90 days of the review, and a sub-70 score triggers Financial Watch / the exception process. FAIL if the gate is misstated or a sub-70 supplier is passed silently.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "financials_and_going_concern",
+      "criterion": "PASS if ≥3 years of audited financials are present with no going-concern qualification in the most recent audit opinion. FAIL if the financial evidence is short or a going-concern flag is ignored.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "qms_certification_by_segment",
+      "criterion": "PASS if QMS certification matches the segment: IATF 16949 for automotive-destined product (a standalone ISO 9001 is explicitly insufficient), ISO 9001 for non-automotive. FAIL if the wrong certification standard is accepted for the segment.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "workmanship_class",
+      "criterion": "PASS if a contract manufacturer performing workmanship-critical operations holds IPC-A-610 Class 2 compliance with inspector certification evidence. FAIL if workmanship class is unaddressed for an assembly supplier.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "certificate_site_scope",
+      "criterion": "PASS if each certificate is confirmed to cover the actual manufacturing/service site(s) supplying Stonefield, not a different corporate site. FAIL if site scope is not verified.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "qualification_package_complete",
+      "criterion": "PASS if the technical Qualification Package (ELEC-SCM-01) contents required by the SOP are present. FAIL if required package elements are missing.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "audit_findings_dispositioned",
+      "criterion": "PASS if the on-site/desk audit per Section 3 is documented and every finding carries a corrective-action disposition. FAIL if findings are listed without closure.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "scorecard_methodology",
+      "criterion": "PASS if the supplier scorecard is computed using the SOP's defined weighting methodology, not an ad-hoc score. FAIL if the scorecard weights are wrong or unstated.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "exception_process",
+      "criterion": "PASS if any below-threshold result is routed through the Section 5 exception/waiver process with the correct approval authority, rather than waived informally. FAIL otherwise.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "decision_justified",
+      "criterion": "PASS if the overall qualification decision (approve / conditional / reject) and ASL status/re-audit frequency follow from the gate and scorecard results. FAIL if the decision contradicts the evidence.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "cites_governing_sop",
+      "criterion": "PASS if the report cites the Supplier Qualification SOP (SUM-SCM-SOP-002) as the source of the qualification criteria and hard gates. FAIL otherwise.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "cites_quality_manual",
+      "criterion": "PASS if the report references the Supplier Quality Management System Manual (SUM-SCM-MAN-001) as the overarching framework. FAIL otherwise.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "threshold_registry_trace",
+      "criterion": "PASS if the PAYDEX ≥70 and other threshold values are attributed to the Stonefield Threshold Registry (SUM-REG-THR-001). FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "cites_reliability_protocol",
+      "criterion": "PASS if product-reliability qualification elements reference the Reliability Qualification Protocol (SUM-REL-QUAL-003) where in scope. FAIL if reliability claims are made with no protocol reference.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "cites_supplier_evidence",
+      "criterion": "PASS if the D&B report, QMS certificates, and audit report the decision rests on are cited as retrieved artifacts. FAIL if the gate results are asserted with no source documents.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "no_fabricated_citations",
+      "criterion": "PASS if every regulatory clause, standard, SOP, procedure, and controlled-document identifier cited in the output appears in the retrieved sources. FAIL if any citation is invented or cannot be traced.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "no_unsupported_numbers",
+      "criterion": "PASS if every measurement, margin, count, score, and figure in the output traces to the retrieved data, tables, or tool results. FAIL if any number is unsupported.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "completeness",
+      "criterion": "PASS if the output contains every section the governing procedure requires for a supplier qualification report. FAIL if a required section is missing or empty.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "grounding",
+      "criterion": "PASS if every factual claim in the output is supported by the retrieved sources and the exact data provided. FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "clarity",
+      "criterion": "PASS if the output is written clearly and unambiguously, appropriate for a controlled quality record, with correct document and revision identifiers. FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "general"
+    }
+  ],
+  "trajectory": {
+    "description": "Provenance checks against the recorded retrieval trajectory for a supplier qualification report.",
+    "required": [
+      {
+        "kind": "document",
+        "id": "supplier_qual_sop",
+        "documentType": "supplier-qualification-sop",
+        "reason": "The qualification hard gates (PAYDEX ≥70, certified QMS) are defined in SUM-SCM-SOP-002; a qualification produced without it has no governed criteria."
+      },
+      {
+        "kind": "document",
+        "id": "supplier_quality_manual",
+        "documentType": "supplier-quality-manual",
+        "reason": "SUM-SCM-MAN-001 is the overarching supplier-quality framework the SOP operates under; the qualification must be grounded in it."
+      }
+    ],
+    "forbidden": []
+  }
+}

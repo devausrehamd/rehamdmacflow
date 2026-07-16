@@ -1,0 +1,260 @@
+{
+  "documentType": "signal-integrity-report",
+  "displayName": "Signal Integrity Analysis Report",
+  "version": "0.1.0",
+  "aliases": [
+    "signal integrity report",
+    "si report",
+    "si analysis report",
+    "eye diagram report",
+    "ddr5 signal integrity report"
+  ],
+  "reviewThreshold": 0.85,
+  "requires": [],
+  "exports": {
+    "eyeResults": {
+      "description": "Per-lane eye height/width at the compliance test point so a gate review can cite the SI sign-off structurally.",
+      "schema": "array<{ lane: string, corner: string, eyeHeightMv: number, eyeWidthPs: number, pass: boolean }>"
+    }
+  },
+  "criteria": [
+    {
+      "id": "eye_vs_hard_gate",
+      "criterion": "PASS if DDR5 eye height and eye width are compared against the ≥100 mV / ≥50 ps hard gate at the designated test point (TP3). FAIL if the gate is misstated or the comparison is wrong.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "cold_corner_evaluated",
+      "criterion": "PASS if the eye is evaluated at the −40 °C worst-case cold corner (the bounding case for setup-time margin), not only nominal. FAIL if the bounding corner is omitted.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "equalization_disabled",
+      "criterion": "PASS if the hard-gate eye is demonstrated with receiver DFE/CTLE and transmitter de-emphasis/pre-shoot disabled, proving raw-channel compliance. FAIL if the passing result relies on equalization.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "data_rate",
+      "criterion": "PASS if the analysis is run at ≥6400 MT/s (or the higher rated data rate with proportionally scaled eye requirement). FAIL if run below the minimum rate.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "impedance_target",
+      "criterion": "PASS if differential trace impedance is verified against 85 Ω ±10% via field-solver extraction and confirmed by TDR, with excursions treated as non-conformances. FAIL otherwise.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "pre_and_post_layout",
+      "criterion": "PASS if both pre-layout (schematic-level) and post-layout (3D-extracted) simulations are performed and hard gates re-verified on the extracted model. FAIL if only one stage is present.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "pvt_corner_sweep",
+      "criterion": "PASS if the eye is swept across the required process/voltage/temperature corners, not a single operating point. FAIL otherwise.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "crosstalk_included",
+      "criterion": "PASS if NEXT/FEXT crosstalk-induced jitter is quantified and included in the composite eye at TP3. FAIL if crosstalk is ignored.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "worst_lane_identified",
+      "criterion": "PASS if per-lane results are reported and the worst-case lane is identified (e.g. DQ60 cold-corner). FAIL if only an aggregate eye is given.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "correlation_and_corrective",
+      "criterion": "PASS if any pre/post discrepancy exceeding 10% of the threshold carries a correlation note, and any failing lane carries a documented corrective action (fanout, via-stub, or stackup). FAIL otherwise.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "cites_governing_sop",
+      "criterion": "PASS if the report cites the Signal Integrity Analysis Sign-Off SOP (SUM-SI-SOP-022) as the source of the eye hard gates. FAIL otherwise.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "cites_eye_data",
+      "criterion": "PASS if reported eye numbers cite the underlying measurement/simulation data (e.g. SUM-RAI-SI-001a). FAIL if eye values are asserted with no data source.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "cites_jedec_reference",
+      "criterion": "PASS if DDR5 electrical requirements are attributed to the JEDEC JESD79-5 reference summary (SUM-STD-JES79-5). FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "cites_stackup_guide",
+      "criterion": "PASS if impedance/stackup claims reference the PCB Stackup Optimization Guide (SUM-STD-INT-PCB-001). FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "threshold_and_risk_trace",
+      "criterion": "PASS if the 100 mV/50 ps thresholds trace to the Threshold Registry (SUM-REG-THR-001) and any SI risk closed (e.g. R-004) cites the risk register. FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "no_fabricated_citations",
+      "criterion": "PASS if every regulatory clause, standard, SOP, procedure, and controlled-document identifier cited in the output appears in the retrieved sources. FAIL if any citation is invented or cannot be traced.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "no_unsupported_numbers",
+      "criterion": "PASS if every measurement, margin, count, score, and figure in the output traces to the retrieved data, tables, or tool results. FAIL if any number is unsupported.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "completeness",
+      "criterion": "PASS if the output contains every section the governing procedure requires for a signal integrity report. FAIL if a required section is missing or empty.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "grounding",
+      "criterion": "PASS if every factual claim in the output is supported by the retrieved sources and the exact data provided. FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "clarity",
+      "criterion": "PASS if the output is written clearly and unambiguously, appropriate for a controlled quality record, with correct document and revision identifiers. FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "general"
+    }
+  ],
+  "trajectory": {
+    "description": "Provenance checks against the recorded retrieval trajectory for a signal-integrity report.",
+    "required": [
+      {
+        "kind": "document",
+        "id": "si_signoff_sop",
+        "documentType": "signal-integrity-signoff-sop",
+        "reason": "The eye-diagram hard gates (≥100 mV / ≥50 ps) are defined in SUM-SI-SOP-022; an SI report without it has no authority for its pass/fail claim."
+      },
+      {
+        "kind": "document",
+        "id": "threshold_registry",
+        "documentType": "threshold-registry",
+        "reason": "The eye thresholds are registered in SUM-REG-THR-001 and must be traced there structurally."
+      }
+    ],
+    "forbidden": []
+  }
+}

@@ -1,0 +1,278 @@
+{
+  "documentType": "gate-review",
+  "displayName": "Gate Review Pack",
+  "version": "0.1.0",
+  "aliases": [
+    "gate review",
+    "gate review pack",
+    "phase gate review",
+    "drb gate review",
+    "evt exit gate",
+    "dvt exit gate",
+    "gate decision"
+  ],
+  "reviewThreshold": 0.85,
+  "requires": [
+    {
+      "documentType": "risk-register",
+      "domain": "engineering",
+      "consume": [
+        "riskItems"
+      ],
+      "reason": "A gate review dispositions risk identifiers (R-xxx). Those identifiers must come from the APPROVED risk register, read structurally, not paraphrased from prose."
+    }
+  ],
+  "exports": {
+    "gateDisposition": {
+      "description": "The gate decision and its conditions so a subsequent gate review can cite the prior disposition structurally.",
+      "schema": "{ gate: string, disposition: string, conditions: array<{ id: string, description: string, owner: string, clearBy: string, cleared: boolean }> }"
+    }
+  },
+  "criteria": [
+    {
+      "id": "gate_identity_matches_framework",
+      "criterion": "PASS if the gate under review (e.g. G3 EVT Exit, G4 DVT Exit) is correctly placed in the charter's P0–P6 gated framework and its milestone meaning matches the charter definition. FAIL if the gate is mislabelled or its purpose misstated.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "disposition_justified",
+      "criterion": "PASS if the gate disposition (pass / conditional pass / hold) is supported by the presented exit-criteria evidence. FAIL if the decision is not entailed by the evidence, or a hard-gate nonconformance is passed without a waiver.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "all_risks_dispositioned",
+      "criterion": "PASS if every open risk carried into the gate is explicitly dispositioned (closed / mitigated / accepted / deferred) with rationale and a risk-register identifier. FAIL if any open risk is left unaddressed.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "entry_criteria_evidence",
+      "criterion": "PASS if each subsystem's entry criteria (required deliverables/evidence packages) are shown to be satisfied before the gate assessment. FAIL if entry evidence is asserted without substantiation.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "exit_criteria_assessed",
+      "criterion": "PASS if each defined exit criterion is individually assessed as met / not-met, not summarized as a blanket 'ready'. FAIL otherwise.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "conditions_actionable",
+      "criterion": "PASS if every condition on a conditional pass carries an owner and a clear-by date, and the clearance state is recorded. FAIL if conditions are vague or unowned.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "per_subsystem_closure",
+      "criterion": "PASS if each subsystem presents a closure package cross-referenced to its supporting verification evidence (EVT/DVT/PVT report, SI report, EMC retest, etc.). FAIL if a subsystem is signed off with no evidence link.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "carried_forward_items",
+      "criterion": "PASS if action items and conditions carried from the prior gate are shown as resolved or explicitly re-carried. FAIL if prior-gate items silently disappear.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "hard_gate_nonconformance_flagged",
+      "criterion": "PASS if any subsystem result below a hard-gate threshold (e.g. EMC margin <4 dB) is flagged as a monitored exception with disposition, not buried. FAIL otherwise.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "quorum_and_authority",
+      "criterion": "PASS if DRB attendance, chair identity/authority, and the required approval signatures are recorded, establishing the decision was validly taken. FAIL otherwise.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "cites_program_charter",
+      "criterion": "PASS if the pack cites the Program Charter (SUM-PGM-CHT-001) as the authority for the gate framework and gate criteria. FAIL if the gate structure is asserted with no charter reference.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "cites_risk_register",
+      "criterion": "PASS if every risk disposition references the risk register (SUM-PGM-RSK-001) by identifier. FAIL if a risk state is changed without the register reference.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "cites_subsystem_evidence",
+      "criterion": "PASS if each subsystem section cites the controlled evidence document(s) it relies on (e.g. SUM-TAH-EMC-003, SUM-RAI-SI-001, SUM-DEN-RPT-001). FAIL if closure claims lack traceable evidence.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "cites_prior_gate",
+      "criterion": "PASS if the pack references the immediately preceding gate pack (e.g. G4 references SUM-PGM-GR-003) to establish continuity of decisions. FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "cites_schedule",
+      "criterion": "PASS if schedule/milestone claims trace to the Master Schedule (SUM-PGM-SCH-001) rather than being asserted from memory. FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "no_fabricated_citations",
+      "criterion": "PASS if every regulatory clause, standard, SOP, procedure, and controlled-document identifier cited in the output appears in the retrieved sources. FAIL if any citation is invented or cannot be traced.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "no_unsupported_numbers",
+      "criterion": "PASS if every measurement, margin, count, score, and figure in the output traces to the retrieved data, tables, or tool results. FAIL if any number is unsupported.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "completeness",
+      "criterion": "PASS if the output contains every section the governing procedure requires for a gate review pack. FAIL if a required section is missing or empty.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "grounding",
+      "criterion": "PASS if every factual claim in the output is supported by the retrieved sources and the exact data provided. FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "clarity",
+      "criterion": "PASS if the output is written clearly and unambiguously, appropriate for a controlled quality record, with correct document and revision identifiers. FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "general"
+    }
+  ],
+  "trajectory": {
+    "description": "Provenance checks against the recorded retrieval trajectory for a gate review pack.",
+    "required": [
+      {
+        "kind": "document",
+        "id": "program_charter",
+        "documentType": "program-charter",
+        "reason": "The gate framework (P0–P6) and gate criteria are defined in SUM-PGM-CHT-001; a gate pack produced without it invents its own authority."
+      },
+      {
+        "kind": "document",
+        "id": "risk_register",
+        "documentType": "risk-register",
+        "reason": "Risk dispositions must cite R-xxx identifiers read structurally from SUM-PGM-RSK-001, not paraphrased."
+      }
+    ],
+    "forbidden": [
+      {
+        "kind": "document",
+        "id": "historical_org_chart",
+        "documentType": "org-chart-historical",
+        "reason": "A current gate decision must not be grounded in a superseded historical org chart for attendance/authority; use the live entity registry."
+      }
+    ]
+  }
+}

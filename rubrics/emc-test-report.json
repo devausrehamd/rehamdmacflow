@@ -1,0 +1,267 @@
+{
+  "documentType": "emc-test-report",
+  "displayName": "EMC Test Report",
+  "version": "0.1.0",
+  "aliases": [
+    "emc test report",
+    "emc report",
+    "emc compliance report",
+    "radiated emissions report",
+    "cispr 32 test report"
+  ],
+  "reviewThreshold": 0.85,
+  "requires": [],
+  "exports": {
+    "emissionMargins": {
+      "description": "Per-frequency worst-case emission margins so a downstream gate review or reliability qualification can cite the EMC result structurally rather than from prose.",
+      "schema": "array<{ frequencyMHz: number, limitDbuV: number, measuredDbuV: number, marginDb: number, detector: string, pass: boolean }>"
+    }
+  },
+  "criteria": [
+    {
+      "id": "margin_vs_hard_gate",
+      "criterion": "PASS if the worst-case radiated-emissions margin is computed as (limit − measured) and compared against the ≥4 dB CISPR 32 Class B hard gate (≥6 dB for Class A). FAIL if the gate is misstated, mis-applied, or the comparison is wrong.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "worst_case_unit",
+      "criterion": "PASS if the pass/fail determination is evaluated on the worst-case production unit corresponding to the 3σ statistical production boundary, not a single golden sample. FAIL otherwise.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "disposition_consistent",
+      "criterion": "PASS if the stated PASS/FAIL disposition is logically consistent with the measured margin against the applicable limit at every frequency. FAIL if a unit that misses the limit is reported as passing, or vice versa.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "frequency_range_covered",
+      "criterion": "PASS if the radiated scan covers 30 MHz–6 GHz per CISPR 32 Table 1 and reports every frequency where emissions exceed 80% of the limit. FAIL if the range or the near-limit points are incomplete.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "detector_method",
+      "criterion": "PASS if peak and quasi-peak detector readings are reported at all frequencies exceeding 80% of the limit, and quasi-peak is used for the final compliance determination. FAIL otherwise.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "chamber_and_lab",
+      "criterion": "PASS if the report names the test facility, confirms a CISPR 16-1-4 site-validated semi-anechoic chamber (3 m or 10 m), and confirms the lab holds current IEC/ISO 17025 accreditation covering the relevant standards. FAIL otherwise.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "eut_configuration",
+      "criterion": "PASS if the equipment-under-test revision, operating mode, cabling, and support equipment are documented so the measurement is reproducible. FAIL if the tested configuration is ambiguous.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "class_selection",
+      "criterion": "PASS if the emissions class (CISPR 32 Class A vs Class B) is correctly selected for the product's market and the corresponding margin requirement is applied; Class A designation, if used, is recorded as approved. FAIL otherwise.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "marginal_pass_flagged",
+      "criterion": "PASS if a positive margin below the 4 dB target is explicitly flagged for monitoring rather than silently reported as a clean pass. FAIL if a marginal result is presented as fully compliant with no caveat.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "failure_disposition_path",
+      "criterion": "PASS if, for any failure, the report initiates the Section 9 disposition path — root-cause analysis and corrective action — rather than closing the failure without follow-up. FAIL otherwise.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "cites_governing_sop",
+      "criterion": "PASS if the report cites the governing EMC Test and Compliance SOP (SUM-EMC-SOP-005) as the source of the pass/fail criteria. FAIL if the hard gate is asserted with no reference to the controlling procedure.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "cites_unit_under_test",
+      "criterion": "PASS if the report identifies the exact schematic/BOM revision of the unit under test (e.g. SUM-TAH-SCH-001 / the RevC1 BOM). FAIL if the hardware revision is not traceable.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "retest_cites_baseline",
+      "criterion": "PASS if a retest report references the prior failing baseline report (e.g. SUM-TAH-EMC-001) and the intervening root-cause analysis (SUM-TAH-EMC-002) that justified the design change. FAIL if a retest stands alone with no link to the failure it clears.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "threshold_registry_trace",
+      "criterion": "PASS if the 4 dB (or 6 dB) margin value is attributed to the Stonefield Threshold Registry (SUM-REG-THR-001), not just to prose in the SOP. FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "risk_register_linkage",
+      "criterion": "PASS if any EMC risk the report closes or affects is cited by its risk-register identifier (e.g. R-002 in SUM-PGM-RSK-001). FAIL if a risk state change is asserted without the register reference.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "no_fabricated_citations",
+      "criterion": "PASS if every regulatory clause, standard, SOP, procedure, and controlled-document identifier cited in the output appears in the retrieved sources. FAIL if any citation is invented or cannot be traced.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "no_unsupported_numbers",
+      "criterion": "PASS if every measurement, margin, count, score, and figure in the output traces to the retrieved data, tables, or tool results. FAIL if any number is unsupported.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "completeness",
+      "criterion": "PASS if the output contains every section the governing procedure requires for a EMC test report. FAIL if a required section is missing or empty.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "grounding",
+      "criterion": "PASS if every factual claim in the output is supported by the retrieved sources and the exact data provided. FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "clarity",
+      "criterion": "PASS if the output is written clearly and unambiguously, appropriate for a controlled quality record, with correct document and revision identifiers. FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "general"
+    }
+  ],
+  "trajectory": {
+    "description": "Provenance checks against the recorded retrieval trajectory for an EMC test report.",
+    "required": [
+      {
+        "kind": "document",
+        "id": "emc_sop",
+        "documentType": "emc-test-and-compliance-sop",
+        "reason": "The pass/fail hard gate (≥4 dB CISPR 32 Class B margin) is defined by SUM-EMC-SOP-005; an EMC report produced without it has no authority for its determination."
+      },
+      {
+        "kind": "document",
+        "id": "threshold_registry",
+        "documentType": "threshold-registry",
+        "reason": "The margin threshold is registered in SUM-REG-THR-001; the report's limit values must trace there structurally rather than being restated from memory."
+      }
+    ],
+    "forbidden": [
+      {
+        "kind": "document",
+        "id": "superseded_emc_report",
+        "documentType": "emc-test-report-superseded",
+        "reason": "A current determination must not be grounded in a superseded/closed EMC report revision as if it were live evidence."
+      }
+    ]
+  }
+}

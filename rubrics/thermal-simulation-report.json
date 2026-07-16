@@ -1,0 +1,260 @@
+{
+  "documentType": "thermal-simulation-report",
+  "displayName": "Thermal Simulation Report",
+  "version": "0.1.0",
+  "aliases": [
+    "thermal simulation report",
+    "thermal report",
+    "cfd thermal report",
+    "junction temperature report",
+    "thermal analysis report"
+  ],
+  "reviewThreshold": 0.85,
+  "requires": [],
+  "exports": {
+    "junctionTemps": {
+      "description": "Per-component junction temperature and derating margin so a derating table, PVT report, or gate review can cite the thermal result structurally.",
+      "schema": "array<{ component: string, corner: string, tjOperatingC: number, tjMaxC: number, marginC: number, pass: boolean }>"
+    }
+  },
+  "criteria": [
+    {
+      "id": "tj_margin_hard_gate",
+      "criterion": "PASS if the junction-temperature margin is computed as (Tj_max − Tj_operating) and compared against the ≥25 °C derating hard gate at the worst-case corner. FAIL if the gate is misstated or the margin is computed wrong.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "worst_case_corner",
+      "criterion": "PASS if Tj is evaluated at the worst-case operating corner across the ambient × airflow × load sweep, not only nominal. FAIL if the bounding corner is not identified.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "sff_ride_through",
+      "criterion": "PASS if single-fan-fail analysis demonstrates ≥15 °C junction margin at 95 °C ambient while delivering rated power for a 5-minute ride-through. FAIL if the SFF condition, ambient, duration, or margin is wrong or omitted for a server-PSU product.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "tj_derivation_method",
+      "criterion": "PASS if the Tj derivation method is stated (measured, or calculated as Tj = Tc + Pd·θ_jc) with θ_jc sourced from the component datasheet and Pd at the stated operating point. FAIL if Tj appears with no derivation.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "cfd_assumptions",
+      "criterion": "PASS if the CFD model's boundary conditions, mesh/solver, airflow, and ambient assumptions are documented so the result is reproducible. FAIL if the model setup is opaque.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "per_component_table",
+      "criterion": "PASS if a per-component Tj table covers every power-dissipating semiconductor, not just the hottest device. FAIL if components are omitted.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "below_margin_flagged",
+      "criterion": "PASS if any component below the ≥25 °C (or ≥15 °C SFF) margin is explicitly flagged with a mitigation path, not silently passed. FAIL otherwise.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "measurement_correlation",
+      "criterion": "PASS if the simulation states how it will be correlated to measurement (thermocouple or IR thermography during validation), acknowledging simulation is not final proof. FAIL if simulation is treated as sufficient by itself for the hard gate.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "alt_pn_comparison",
+      "criterion": "PASS if an alternate-part-number qualification includes an original-vs-alt Tj comparison at matched operating points. FAIL if an alt-PN is substituted with no thermal comparison.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "inputs_traceable",
+      "criterion": "PASS if θ_jc, Pd, and airflow inputs are traceable to the datasheet, design specification, and operating conditions rather than assumed. FAIL otherwise.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "cites_derating_policy",
+      "criterion": "PASS if the report cites the Component Derating Policy (SUM-STD-INT-DRT-001) as the source of the ≥25 °C and SFF ≥15 °C margins. FAIL otherwise.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "cites_design_spec",
+      "criterion": "PASS if power-dissipation and operating-point inputs cite the design specification (e.g. SUM-DEN-SPC-001). FAIL if Pd is asserted with no design source.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "cites_derating_table",
+      "criterion": "PASS if per-component margins are reconciled against the Denali derating table (SUM-DEN-DRT-001) and the sweep data (SUM-DEN-THM-001a). FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "threshold_registry_trace",
+      "criterion": "PASS if the 25 °C / 15 °C margin values are attributed to the Stonefield Threshold Registry (SUM-REG-THR-001). FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "risk_register_linkage",
+      "criterion": "PASS if any thermal risk the report affects (e.g. R-003, R-008) is cited by its risk-register identifier. FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "no_fabricated_citations",
+      "criterion": "PASS if every regulatory clause, standard, SOP, procedure, and controlled-document identifier cited in the output appears in the retrieved sources. FAIL if any citation is invented or cannot be traced.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "no_unsupported_numbers",
+      "criterion": "PASS if every measurement, margin, count, score, and figure in the output traces to the retrieved data, tables, or tool results. FAIL if any number is unsupported.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "completeness",
+      "criterion": "PASS if the output contains every section the governing procedure requires for a thermal simulation report. FAIL if a required section is missing or empty.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "grounding",
+      "criterion": "PASS if every factual claim in the output is supported by the retrieved sources and the exact data provided. FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "clarity",
+      "criterion": "PASS if the output is written clearly and unambiguously, appropriate for a controlled quality record, with correct document and revision identifiers. FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "general"
+    }
+  ],
+  "trajectory": {
+    "description": "Provenance checks against the recorded retrieval trajectory for a thermal simulation report.",
+    "required": [
+      {
+        "kind": "document",
+        "id": "derating_policy",
+        "documentType": "component-derating-policy",
+        "reason": "The Tj derating (≥25 °C) and SFF (≥15 °C) hard gates are defined in SUM-STD-INT-DRT-001; a thermal report without it has no governed margin."
+      },
+      {
+        "kind": "document",
+        "id": "threshold_registry",
+        "documentType": "threshold-registry",
+        "reason": "The derating margins are registered in SUM-REG-THR-001 and must be traced there structurally."
+      }
+    ],
+    "forbidden": []
+  }
+}

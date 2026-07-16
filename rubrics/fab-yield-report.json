@@ -1,0 +1,268 @@
+{
+  "documentType": "fab-yield-report",
+  "displayName": "Foundry Yield Report",
+  "version": "0.1.0",
+  "aliases": [
+    "fab yield report",
+    "foundry yield report",
+    "wafer sort yield report",
+    "yield report",
+    "spc yield report",
+    "lot yield report"
+  ],
+  "reviewThreshold": 0.85,
+  "requires": [],
+  "exports": {
+    "lotYield": {
+      "description": "Per-lot wafer-sort yield and SPC alert state so a downstream SPC memo, CR, or gate review can cite the result structurally.",
+      "schema": "{ lot: string, wafers: int, dieTested: int, diePass: int, lotMeanYield: number, spcAlert: string, disposition: string }"
+    }
+  },
+  "criteria": [
+    {
+      "id": "yield_computation_correct",
+      "criterion": "PASS if lot-mean wafer-sort yield is computed as passing die divided by total testable die on a per-wafer basis and averaged to the lot. FAIL if the yield basis (e.g. gross vs net die, tested vs total) is wrong or inconsistent.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "yield_vs_baseline",
+      "criterion": "PASS if the lot-mean yield is compared against the 88% SPC baseline (soft) and the 85% contractual foundry floor, with the correct consequence (investigation vs credit). FAIL if the baselines are confused or misapplied.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "spc_alert_rule",
+      "criterion": "PASS if the SPC alert is evaluated as −2σ below the 12-lot rolling mean and the four Western Electric Rules are applied to the control chart. FAIL if the alert logic is wrong or the rolling window is misdefined.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "authorized_spc_tool",
+      "criterion": "PASS if SPC alerts are attributed to the Sierra SPC Analyzer as the sole authorized alert-generation mechanism. FAIL if alerts are computed by an ad-hoc/unnamed method.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "counts_reconcile",
+      "criterion": "PASS if wafer counts, per-wafer die counts, and lot totals reconcile arithmetically across the report. FAIL if the die accounting does not add up.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "spatial_analysis_on_excursion",
+      "criterion": "PASS if an excursion is accompanied by spatial/bin analysis (edge vs centre, bin Pareto, wafer-map correlation) that localizes the loss. FAIL if an excursion is reported with no failure-mode breakdown.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "scope_ws_vs_ft",
+      "criterion": "PASS if the report keeps wafer-sort (WS) yield distinct from OSAT final-test (FT) yield and only pulls FT in as a joint-RCA input, per SOP scope. FAIL if WS and FT yields are conflated.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "triage_routing",
+      "criterion": "PASS if a flagged lot is routed to the defined triage/quality-hold owner per Section 5 rather than dispositioned informally. FAIL otherwise.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "joint_rca_referenced",
+      "criterion": "PASS if a sustained or assignable-cause excursion references the joint foundry root-cause / change-request process. FAIL if a systematic excursion is closed with no corrective path.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "disposition_justified",
+      "criterion": "PASS if the lot disposition (release / hold / rework / CR) follows from the yield and SPC state. FAIL if the disposition contradicts the data.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "expert"
+    },
+    {
+      "id": "cites_governing_sop",
+      "criterion": "PASS if the report cites the Foundry Yield SPC SOP (SUM-YLD-SOP-004) as the source of the baseline and alert rules. FAIL otherwise.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "cites_wafer_map",
+      "criterion": "PASS if spatial claims cite the underlying wafer-map data (e.g. SUM-SIE-WMAP-001-FAB). FAIL if edge/centre claims are made with no wafer-map source.",
+      "explanation": "",
+      "weight": 5,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "cites_spc_data",
+      "criterion": "PASS if control-chart and trend claims cite the SPC data sets / analyzer (e.g. SUM-SIE-SPC-001, SUM-SIE-SPC-003). FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "threshold_registry_trace",
+      "criterion": "PASS if the 88% baseline and alert thresholds are attributed to the Stonefield Threshold Registry (SUM-REG-THR-001). FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "cites_downstream_actions",
+      "criterion": "PASS if linked SPC trigger memos, change requests, or conflict analyses (e.g. SUM-SIE-SPC-MEMO-2026-01, SUM-SIE-CR-001) and the affected risk (R-001) are cited where relevant. FAIL if referenced actions are unlinked.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "trajectory"
+    },
+    {
+      "id": "no_fabricated_citations",
+      "criterion": "PASS if every regulatory clause, standard, SOP, procedure, and controlled-document identifier cited in the output appears in the retrieved sources. FAIL if any citation is invented or cannot be traced.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "no_unsupported_numbers",
+      "criterion": "PASS if every measurement, margin, count, score, and figure in the output traces to the retrieved data, tables, or tool results. FAIL if any number is unsupported.",
+      "explanation": "",
+      "weight": 6,
+      "primary": true,
+      "assessmentType": "llm_judge",
+      "gate": "critical",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "completeness",
+      "criterion": "PASS if the output contains every section the governing procedure requires for a foundry yield report. FAIL if a required section is missing or empty.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "grounding",
+      "criterion": "PASS if every factual claim in the output is supported by the retrieved sources and the exact data provided. FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "general"
+    },
+    {
+      "id": "clarity",
+      "criterion": "PASS if the output is written clearly and unambiguously, appropriate for a controlled quality record, with correct document and revision identifiers. FAIL otherwise.",
+      "explanation": "",
+      "weight": 4,
+      "primary": false,
+      "assessmentType": "llm_judge",
+      "gate": "minor",
+      "scope": "all_output",
+      "category": "general"
+    }
+  ],
+  "trajectory": {
+    "description": "Provenance checks against the recorded retrieval trajectory for a foundry yield report.",
+    "required": [
+      {
+        "kind": "document",
+        "id": "yield_spc_sop",
+        "documentType": "foundry-yield-spc-sop",
+        "reason": "The yield baseline and SPC alert rules come from SUM-YLD-SOP-004; a yield report without it has no governed threshold."
+      },
+      {
+        "kind": "document",
+        "id": "threshold_registry",
+        "documentType": "threshold-registry",
+        "reason": "The 88% baseline and alert values are registered in SUM-REG-THR-001 and must be traced there structurally."
+      }
+    ],
+    "forbidden": [
+      {
+        "kind": "document",
+        "id": "legacy_yield_report",
+        "documentType": "yield-report-archived",
+        "reason": "A current lot determination must not be grounded in an archived legacy yield report as if it were the live baseline."
+      }
+    ]
+  }
+}

@@ -718,6 +718,16 @@ export const rubric_draft_batches = pgTable(
     // The aggregated BatchStats: per-criterion rates+CIs+stability, score dist.
     stats: jsonb("stats").notNull(),
 
+    // The raw per-run verdicts: CriterionVerdict[][], one array per run, each
+    // verdict carrying the judge's rationale and any deterministic pattern
+    // hits. The aggregate above says a criterion is a coin-flip; THIS says why
+    // - you read the rationales that passed against the ones that failed and
+    // see which reading of the wording the model kept flipping between.
+    //
+    // Nullable: batches from before this column kept no runs, and they cannot
+    // be recovered. Null means "not captured", never "no verdicts".
+    runs: jsonb("runs"),
+
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({ byDraft: index("rubric_draft_batches_draft_idx").on(t.draft_id) }),

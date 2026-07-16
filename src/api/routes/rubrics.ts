@@ -275,12 +275,18 @@ rubricsRouter.post(
       const parsed = rubricSchema.safeParse(draft.content);
       if (!parsed.success) { res.status(422).json({ error: "Draft rubric does not parse; fix validation errors first." }); return; }
 
-      const { stats } = await runBatch(parsed.data, documentText, runs);
+      // Keep the per-run verdicts, not just the aggregate. `runBatch` already
+      // produces them - each carrying the judge's rationale - and dropping them
+      // here discarded the only evidence for what the stats are reporting: a
+      // coin-flip tells an editor the model cannot decide, and the rationales
+      // tell them which two readings of the wording it was flipping between.
+      const { stats, runs: verdicts } = await runBatch(parsed.data, documentText, runs);
       const [row] = await db.insert(rubric_draft_batches)
-        .values({ draft_id: draft.id, document_ref: documentRef, k: runs, stats })
+        .values({ draft_id: draft.id, document_ref: documentRef, k: runs, stats, runs: verdicts })
         .returning({ id: rubric_draft_batches.id, created_at: rubric_draft_batches.created_at });
+      if (!row) throw new Error("Batch insert returned no row; the batch was not recorded.");
 
-      res.status(201).json({ batchId: row.id, k: runs, documentRef, stats });
+      res.status(201).json({ batchId: row.id, k: runs, documentRef, stats, runs: verdicts });
     } catch (err) { next(err); }
   },
 );
@@ -306,7 +312,9 @@ rubricsRouter.get(
       }
 
       res.json({
-        batches: rows.map((r) => ({ batchId: r.id, documentRef: r.document_ref, k: r.k, stats: r.stats, createdAt: r.created_at })),
+        // `runs` is null for batches recorded before it was kept - the GUI must
+        // show that as "not captured", not as "no verdicts".
+        batches: rows.map((r) => ({ batchId: r.id, documentRef: r.document_ref, k: r.k, stats: r.stats, runs: r.runs, createdAt: r.created_at })),
         latestComparison: comparison,
       });
     } catch (err) { next(err); }

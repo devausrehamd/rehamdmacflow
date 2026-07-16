@@ -84,15 +84,105 @@
     }
   ],
   "trajectory": {
-    "description": "Provenance checks against the recorded retrieval trajectory.",
+    "description": "A CAPA must be grounded in the controlled Field Quality and CAPA Management procedure.",
     "required": [
       {
         "kind": "document",
-        "id": "capa_procedure",
-        "documentType": "capa-procedure",
-        "reason": "A CAPA must be grounded in the controlled CAPA procedure; producing one without consulting it means the process was never followed."
+        "id": "capa_sop",
+        "documentType": "capa-management",
+        "reason": "The CAPA methodology (8D), thresholds, and disposition path are defined by the controlled Field Quality and CAPA Management SOP; a CAPA produced without consulting it is ungoverned."
       }
     ],
     "forbidden": []
+  },
+  "sections": [
+    {
+      "id": "capa_record",
+      "title": "Corrective and Preventive Action Record",
+      "cardinality": "single",
+      "groundedIn": [
+        "sop"
+      ],
+      "fields": [
+        {
+          "name": "problem_statement",
+          "type": "string",
+          "provenance": "generated",
+          "required": true,
+          "sopClause": "D2 - Problem Description"
+        },
+        {
+          "name": "root_cause_analysis",
+          "type": "string",
+          "provenance": "generated",
+          "required": true,
+          "sopClause": "D4 - Root Cause Analysis"
+        },
+        {
+          "name": "corrective_action",
+          "type": "string",
+          "provenance": "generated",
+          "required": true,
+          "sopClause": "D5/D6 - Corrective Action"
+        },
+        {
+          "name": "preventive_action",
+          "type": "string",
+          "provenance": "generated",
+          "required": true,
+          "sopClause": "D7 - Preventive Action"
+        },
+        {
+          "name": "verification_plan",
+          "type": "string",
+          "provenance": "generated",
+          "required": true,
+          "sopClause": "D6 - Verification of Effectiveness"
+        }
+      ]
+    }
+  ],
+  "recipe": {
+    "steps": [
+      {
+        "id": "sop",
+        "kind": "retrieve_sections",
+        "source": "Field_Quality_and_CAPA_Management",
+        "sections": []
+      },
+      {
+        "id": "gen",
+        "kind": "generate_section",
+        "sectionId": "capa_record",
+        "bestOf": 1,
+        "inputs": [
+          "sop"
+        ]
+      },
+      {
+        "id": "val",
+        "kind": "validate_section",
+        "sectionId": "capa_record",
+        "inputs": [
+          "gen"
+        ]
+      },
+      {
+        "id": "score",
+        "kind": "judge",
+        "criteria": [],
+        "inputs": [
+          "gen"
+        ]
+      },
+      {
+        "id": "human",
+        "kind": "require_human",
+        "prompt": "Review the CAPA record before approval.",
+        "inputs": [
+          "score"
+        ]
+      }
+    ]
   }
 }

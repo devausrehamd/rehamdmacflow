@@ -148,8 +148,11 @@ reviewRouter.post(
       const [set] = await db.select().from(draft_sets).where(eq(draft_sets.id, firstDoc.set_id));
       if (!set) { res.status(404).json({ error: "No draft set for that correlation id." }); return; }
 
-      // APPROVER != AUTHOR. The person approving must not be the one who
-      // triggered generation - the independent check IS the control.
+      // APPROVER != AUTHOR - but ONLY for approval. Approval certifies the
+      // document, and certifying your own work is the thing independence exists
+      // to prevent. Rejecting or rerunning your OWN draft is safe and often
+      // desirable (the author is best placed to spot their draft is bad and
+      // withdraw it), so those decisions are not gated on independence.
       //
       // This previously compared `originating_query_id` (a qry_<hex>) against a
       // user id, which can never match, so the control silently never fired.
@@ -158,20 +161,22 @@ reviewRouter.post(
       // FAIL CLOSED on an unknown author: a set written before author_id
       // existed cannot prove the approver is independent, so it cannot be
       // approved. Unprovable independence is not independence.
-      if (!set.author_id) {
-        throw new ForbiddenError(
-          "This draft has no recorded author, so approver independence cannot be established. It cannot be approved.",
-        );
-      }
-      if (set.author_id === req.ctx!.user.id) {
-        throw new ForbiddenError("The approver must not be the author of the draft.");
+      if (decision === "approve") {
+        if (!set.author_id) {
+          throw new ForbiddenError(
+            "This draft has no recorded author, so approver independence cannot be established. It cannot be approved.",
+          );
+        }
+        if (set.author_id === req.ctx!.user.id) {
+          throw new ForbiddenError("The approver must not be the author of the draft.");
+        }
       }
 
       const { rubric, contentHash } = getRubric(set.document_type);
       const custody = {
         correlationId,
         runId: req.ctx!.runId,
-        userId: set.author_id, // the AUTHOR - a real user id, not a query id
+        userId: set.author_id ?? undefined, // the AUTHOR (null only on a reject/rerun of a legacy authorless set)
         approverId: req.ctx!.user.id, // WHO is approving - distinct, and verified above
         decisionId: req.ctx!.decisionId,
         policyHash: req.ctx!.policyHash,

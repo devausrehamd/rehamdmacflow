@@ -15,6 +15,7 @@
 
 import { StateGraph, START, END } from "@langchain/langgraph";
 import { AgentState } from "./state.js";
+import { instrument } from "./instrument.js";
 import { understand } from "./nodes/understand.js";
 import { retrieve } from "./nodes/retrieve.js";
 import { sqlRetrieve } from "./nodes/sql-retrieve.js";
@@ -22,13 +23,21 @@ import { draftPartials } from "./nodes/draft.js";
 import { reconcile } from "./nodes/reconcile.js";
 import { finalize } from "./nodes/finalize.js";
 
+// Every node goes through `instrument`, which records what it was given and
+// what it returned into agent_run_steps.
+//
+// Wrapping at the graph rather than inside each node is the point: a node added
+// later is instrumented by being added here, so the trace cannot develop holes
+// as the graph grows. Instrumenting from within each node would be one
+// forgotten line away from a stage that silently reports nothing - and a trace
+// with an invisible gap is worse than no trace, because it reads as complete.
 const builder = new StateGraph(AgentState)
-  .addNode("understand", understand)
-  .addNode("retrieve", retrieve)
-  .addNode("sql_retrieve", sqlRetrieve)
-  .addNode("draft", draftPartials)
-  .addNode("reconcile", reconcile)
-  .addNode("finalize", finalize)
+  .addNode("understand", instrument("understand", understand))
+  .addNode("retrieve", instrument("retrieve", retrieve))
+  .addNode("sql_retrieve", instrument("sql_retrieve", sqlRetrieve))
+  .addNode("draft", instrument("draft", draftPartials))
+  .addNode("reconcile", instrument("reconcile", reconcile))
+  .addNode("finalize", instrument("finalize", finalize))
   .addEdge(START, "understand")
   .addEdge("understand", "retrieve")
   .addEdge("retrieve", "sql_retrieve")

@@ -41,6 +41,7 @@ import { dataRouter } from "./routes/data.js";
 import { custodyRouter } from "./routes/custody.js";
 import { reviewRouter } from "./routes/review.js";
 import { rubricsRouter } from "./routes/rubrics.js";
+import { runsRouter } from "./routes/runs.js";
 import { configureProvenanceSinks, provenanceSinksFromEnv } from "../custody/sink.js";
 import { discoveryFromEnv, setActiveDiscoveryClient } from "../discovery/register.js";
 
@@ -270,6 +271,7 @@ export function createServer() {
   app.use(custodyRouter);
   app.use(reviewRouter);
   app.use(rubricsRouter);
+  app.use(runsRouter);
 
   // 404 for unmatched routes
   app.use((req, res) => {

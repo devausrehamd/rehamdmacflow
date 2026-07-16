@@ -732,3 +732,60 @@ export const rubric_draft_batches = pgTable(
   },
   (t) => ({ byDraft: index("rubric_draft_batches_draft_idx").on(t.draft_id) }),
 );
+// ---------------------------------------------------------------------------
+// agent_run_steps - what went in and out of every graph node, per run.
+//
+// The EVIDENCE layer, deliberately separate from custody. Custody is immutable,
+// hash-chained, and holds references only (chunk ids, never chunk text),
+// because an append-only chain full of document text and PII is a retention
+// problem you cannot delete your way out of.
+//
+// The cost of that decision is that custody proves section 4.2 was retrieved
+// but not what 4.2 said - so "the model ignored a retrieved value" and "the
+// value was never retrieved" are indistinguishable in the record. That is the
+// exact question an engineer opens a low-scoring run to answer.
+//
+// Hence: content here, ERASABLE and outside the chain; proof stays in custody.
+// These rows can be dropped on a retention schedule without touching chain
+// integrity - which is the property the split was always meant to buy.
+// ---------------------------------------------------------------------------
+export const agent_run_steps = pgTable(
+  "agent_run_steps",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    // The durable key tying this evidence to the custody record of the same run.
+    correlation_id: varchar("correlation_id", { length: 64 }).notNull(),
+    run_id: varchar("run_id", { length: 64 }).notNull(),
+    query_id: varchar("query_id", { length: 64 }),
+
+    seq: integer("seq").notNull(),
+    node: varchar("node", { length: 64 }).notNull(),
+
+    // The state the node received, and the delta it returned. REDACTED at write
+    // time - the graph state carries the caller's bearer token, and a table an
+    // engineer browses must never hold live credentials. Never truncated: a
+    // half-stored input is worse than none, because it reads as complete.
+    input: jsonb("input"),
+    output: jsonb("output"),
+
+    // A node that threw is the most interesting row here, so errors are
+    // recorded rather than dropped.
+    status: varchar("status", { length: 16 }).notNull().default("ok"),
+    error: text("error"),
+    latency_ms: integer("latency_ms").notNull().default(0),
+
+    // Retrieval is filtered by the caller's access labels, so these rows hold
+    // content scoped to THIS user. Reads are restricted to the owner unless the
+    // reader holds audit:read.
+    user_id: varchar("user_id", { length: 64 }),
+    mode: varchar("mode", { length: 16 }),
+
+    recorded_at: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byRun: index("agent_run_steps_correlation_idx").on(t.correlation_id, t.seq),
+    byUser: index("agent_run_steps_user_idx").on(t.user_id),
+    byTime: index("agent_run_steps_recorded_idx").on(t.recorded_at),
+  }),
+);

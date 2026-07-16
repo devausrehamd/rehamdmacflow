@@ -23,6 +23,9 @@ import { ValidationError } from "../errors.js";
 import { db } from "../../db/client.js";
 import { rubric_drafts, rubric_draft_batches } from "../../db/schema.js";
 import { listRubricTypes, getRubric } from "../../drafting/rubric-loader.js";
+import { updateRubricsFromRelease, RubricUpdateError } from "../../drafting/rubric-release.js";
+import { appendEvent } from "../../custody/ledger.js";
+import { getActiveDiscoveryClient } from "../../discovery/register.js";
 import { validateRubric } from "../../drafting/rubric-validate.js";
 import { rubricSchema } from "../../drafting/rubric-schema.js";
 import { runBatch } from "../../drafting/batch-runner.js";
@@ -59,7 +62,7 @@ rubricsRouter.get(
   "/api/v1/rubrics/:type",
   requireAuth,
   requirePermission("draft:view-any"),
-  (req: Request, res: Response, next: NextFunction) => {
+  (req: Request<{ type: string }>, res: Response, next: NextFunction) => {
     try {
       if (!listRubricTypes().includes(req.params.type)) {
         res.status(404).json({ error: `No committed rubric '${req.params.type}'.` });
@@ -68,6 +71,74 @@ rubricsRouter.get(
       const { rubric, contentHash } = getRubric(req.params.type);
       res.json({ documentType: req.params.type, hash: contentHash, committed: true, rubric });
     } catch (err) { next(err); }
+  },
+);
+
+// ---- RELEASE (pull the committed rubric set from git) ----
+//
+// The other half of promotion. A draft is exported and committed to git, where
+// a human reviews it; this is how every other agent picks it up. It consumes
+// what review produced rather than bypassing review, which is why it is allowed
+// to exist at all - and why it pulls a pinned RELEASE ref rather than whatever
+// happens to be on main.
+//
+// The standard governing evaluations changes here, so it is chained into
+// custody: an auditor reading a verdict can see when the yardstick was swapped,
+// by whom, and from which hash to which.
+
+rubricsRouter.post(
+  "/api/v1/rubrics/update",
+  requireAuth,
+  requirePermission("rubric:edit"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      // Synchronous and quick, but it swaps the rubric set out from under any
+      // evaluation running right now. The pipeline reads rubrics per run, so
+      // the exposure is small; when generation is wired, a run must pin its
+      // rubric hash for its whole life rather than re-read mid-flight.
+      const result = updateRubricsFromRelease();
+
+      // Only record a custody event when something actually moved. An
+      // already-up-to-date agent changed no standard and should not imply it.
+      if (!result.upToDate) {
+        await appendEvent(
+          {
+            correlationId: req.ctx!.correlationId,
+            runId: req.ctx!.runId,
+            userId: req.ctx!.user.id, // WHO re-standardised this agent
+            decisionId: req.ctx!.decisionId,
+            policyHash: req.ctx!.policyHash,
+            rubricHash: result.toSetHash,
+          },
+          "rubric_set_updated",
+          {
+            ref: result.ref,
+            refCommit: result.refCommit,
+            fromSetHash: result.fromSetHash,
+            toSetHash: result.toSetHash,
+            changed: result.changed.filter((c) => c.change !== "unchanged"),
+          },
+        );
+
+        // Re-announce: Discovery is still advertising the previous fingerprint
+        // and capability list, and the GUI uses exactly those to tell a user
+        // whether two agents serve the same rubrics. Best effort - a failure
+        // here leaves the phone book stale, not the agent wrong.
+        try {
+          await getActiveDiscoveryClient()?.reregister();
+        } catch {
+          // deliberately swallowed; the update itself succeeded
+        }
+      }
+
+      res.json(result);
+    } catch (err) {
+      if (err instanceof RubricUpdateError) {
+        res.status(err.status).json({ error: err.message, detail: err.detail });
+        return;
+      }
+      next(err);
+    }
   },
 );
 

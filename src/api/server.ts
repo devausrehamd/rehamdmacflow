@@ -42,7 +42,7 @@ import { custodyRouter } from "./routes/custody.js";
 import { reviewRouter } from "./routes/review.js";
 import { rubricsRouter } from "./routes/rubrics.js";
 import { configureProvenanceSinks, provenanceSinksFromEnv } from "../custody/sink.js";
-import { discoveryFromEnv } from "../discovery/register.js";
+import { discoveryFromEnv, setActiveDiscoveryClient } from "../discovery/register.js";
 
 export function createServer() {
   const app = express();
@@ -293,6 +293,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
   // Discovery registration client (null if QMS_DISCOVERY_URL is unset).
   const discovery = discoveryFromEnv();
+  // Publish it so the rubric-update route can re-announce the card once the
+  // rubric set changes - otherwise Discovery keeps advertising the old
+  // fingerprint and capability list, which is what the GUI trusts.
+  setActiveDiscoveryClient(discovery);
 
   const server = app.listen(port, () => {
     console.log(`QMS Agent API listening on http://localhost:${port}`);

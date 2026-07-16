@@ -42,7 +42,12 @@ export type CustodyEventType =
   | "delegation" // this agent called another agent (correlation crosses here)
   | "delegation_result" // the delegated agent returned
   | "document_finalized" // output bound by hash
-  | "run_completed";
+  | "run_completed"
+  // The released rubric set was pulled into this agent: from/to set hash, ref,
+  // and which types moved. The STANDARD governing every later evaluation
+  // changed here, so an auditor reading a verdict must be able to see when the
+  // yardstick was swapped and who swapped it.
+  | "rubric_set_updated";
 
 export interface CustodyContext {
   correlationId: string;

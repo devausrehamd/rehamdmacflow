@@ -39,6 +39,12 @@ const ConfigSchema = z.object({
   // Defaults to production: the safe mode must be the one you get by omission.
   mode: z.enum(AGENT_MODES),
 
+  // The git ref holding the RELEASED rubric set - what an agent pulls when it
+  // updates. Deliberately not "main": merging a rubric should not
+  // re-standardise every agent that happens to click update. Releasing is a
+  // second, deliberate act, so this points at a ref somebody has to move.
+  rubricsReleaseRef: z.string().min(1),
+
   ollama: z.object({
     baseUrl: z.string().url(),
     model: z.string().min(1),
@@ -102,6 +108,7 @@ function loadConfig(): Config {
     // typo like QMS_MODE=Debug fails loudly at startup instead of quietly
     // running production.
     mode: process.env.QMS_MODE ?? "production",
+    rubricsReleaseRef: process.env.QMS_RUBRICS_RELEASE_REF ?? "origin/rubrics-release",
 
     ollama: {
       baseUrl: process.env.OLLAMA_BASE_URL,

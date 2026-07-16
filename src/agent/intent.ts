@@ -42,6 +42,19 @@ function normalise(s: string): string {
   return s.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Drop the alias index so it is rebuilt from the current rubrics.
+ *
+ * This index is derived from the rubric set, so anything that reloads rubrics
+ * MUST reset it too. Forgetting would be quiet and nasty: a newly released
+ * document type would exist in the loader but be unrecognisable to the
+ * classifier, so a request naming it would fall through as an ordinary
+ * question rather than being routed to its recipe.
+ */
+export function resetAliasIndex(): void {
+  index = null;
+}
+
 /** Build the alias index from every registered rubric. Cached. */
 export function buildAliasIndex(): AliasIndex {
   if (index) return index;
@@ -68,10 +81,6 @@ export function buildAliasIndex(): AliasIndex {
 
   index = { byAlias };
   return index;
-}
-
-export function resetAliasIndex(): void {
-  index = null;
 }
 
 export interface AliasMatch {

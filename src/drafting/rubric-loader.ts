@@ -87,6 +87,19 @@ export function getRubric(documentType: string): LoadedRubric {
   return loaded;
 }
 
+/**
+ * Drop the in-memory rubric cache so the next read re-reads from disk.
+ *
+ * Only for when the rubric FILES have genuinely changed underneath us - i.e.
+ * pulling a release. Rubrics are otherwise immutable for the life of the
+ * process, and that is load-bearing: a run must be judged by one fixed
+ * standard, and re-reading mid-run could score two criteria of the same
+ * document against two different rubrics.
+ */
+export function resetRubricCache(): void {
+  cache = null;
+}
+
 /** List the document types that have a rubric. */
 export function listRubricTypes(): string[] {
   if (!cache) loadRubrics();

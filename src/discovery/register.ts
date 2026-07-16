@@ -31,16 +31,6 @@ export interface RegisterConfig {
    *  and the GUI lists them together. This is a LABEL an operator sets - it is
    *  a claim of intent, not proof; `rubricSetHash` is the proof. */
   group?: string;
-  /** Fingerprint of the committed rubric set this instance actually loaded.
-   *  Two agents that agree here genuinely serve identical rubrics; two that
-   *  disagree do not, whatever their group label or git commit says. */
-  rubricSetHash?: string;
-  /** The document types this agent can actually judge: DERIVED from the
-   *  committed rubrics it loaded, never configured. A hand-kept list drifts -
-   *  ours advertised "export-control" (which has no rubric and no code) while
-   *  omitting "risk-register" (which works), so an orchestrator routing on it
-   *  would have been wrong in both directions. */
-  capabilities?: string[];
   observabilityUrl?: string;
   registerToken?: string;
   guidFile?: string;
@@ -85,6 +75,13 @@ export class DiscoveryClient {
     };
   }
 
+  /** The card, built FRESH on every call.
+   *
+   *  rubricSetHash and capabilities are read at call time rather than captured
+   *  at construction, because pulling a release changes both. Snapshotting them
+   *  once would leave the agent advertising a fingerprint for rubrics it no
+   *  longer has — and that fingerprint is precisely what the GUI uses to tell
+   *  you whether two agents match. A stale one is worse than none at all. */
   private card() {
     return {
       guid: this.guid,
@@ -93,10 +90,16 @@ export class DiscoveryClient {
       address: this.cfg.address,
       mode: this.cfg.mode,
       group: this.cfg.group,
-      rubricSetHash: this.cfg.rubricSetHash,
+      rubricSetHash: safeRubricSetHash(),
       observabilityUrl: this.cfg.observabilityUrl,
-      capabilities: this.cfg.capabilities ?? [],
+      capabilities: safeCapabilities(),
     };
+  }
+
+  /** Re-announce this card. Call after the rubric set changes so Discovery
+   *  stops advertising the previous fingerprint and capability list. */
+  async reregister(): Promise<void> {
+    await this.register();
   }
 
   async start(): Promise<void> {
@@ -137,6 +140,22 @@ export class DiscoveryClient {
       console.log("Discovery: deregistered on shutdown");
     } catch { /* best effort */ }
   }
+}
+
+// The client this process registered with, if any. Routes need it to
+// re-announce after the rubric set changes; the entry point owns creating it.
+// Same shape as the provenance sinks: set once at startup, read where needed.
+let activeClient: DiscoveryClient | null = null;
+
+export function setActiveDiscoveryClient(client: DiscoveryClient | null): void {
+  activeClient = client;
+}
+
+/** Null when this agent is not registered with Discovery (QMS_DISCOVERY_URL
+ *  unset). Callers must treat re-registration as best effort: an agent that
+ *  cannot re-announce is still correct locally, just stale in the phone book. */
+export function getActiveDiscoveryClient(): DiscoveryClient | null {
+  return activeClient;
 }
 
 /** The rubric-set fingerprint, or undefined if the set cannot be read. A
@@ -190,12 +209,6 @@ export function discoveryFromEnv(): DiscoveryClient | null {
     // wrong. Read at startup; rubrics are git files and do not change at
     // runtime. Never fatal: an agent with unreadable rubrics should still
     // register (and say so elsewhere) rather than vanish from Discovery.
-    rubricSetHash: safeRubricSetHash(),
-    // Likewise derived. QMS_AGENT_CAPABILITIES used to supply this by hand and
-    // had drifted apart from reality in both directions, which is what any
-    // hand-maintained mirror of the code eventually does. An agent can judge a
-    // document type exactly when it has a rubric for it, so ask the loader.
-    capabilities: safeCapabilities(),
     observabilityUrl: process.env.LANGFUSE_BASE_URL,
     registerToken: process.env.QMS_DISCOVERY_TOKEN,
     guidFile,

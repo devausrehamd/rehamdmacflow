@@ -168,7 +168,7 @@
   "criteria": [
     {
       "id": "no_fabricated_failure_modes",
-      "criterion": "Every failure mode traces to a retrieved source: a design document, a recorded defect, or a prior analysis. Invented failure modes fail this criterion.",
+      "criterion": "PASS if every failure mode in the output traces to a retrieved source: a design document, a recorded defect, or a prior analysis. FAIL otherwise.",
       "explanation": "",
       "weight": 10,
       "primary": true,
@@ -178,7 +178,7 @@
     },
     {
       "id": "severity_scale_correct",
-      "criterion": "Severity, occurrence, and detection ratings use the scales defined in the governing procedure, not invented ranges.",
+      "criterion": "PASS if every severity, occurrence, and detection rating in the output uses the scales defined in the governing procedure. FAIL otherwise.",
       "explanation": "",
       "weight": 10,
       "primary": true,
@@ -188,7 +188,7 @@
     },
     {
       "id": "no_unsupported_numbers",
-      "criterion": "Every RPN, rating, and count traces to the retrieved data or the SQL results.",
+      "criterion": "PASS if every RPN, rating, and count in the output traces to the retrieved data or SQL results. FAIL otherwise.",
       "explanation": "",
       "weight": 10,
       "primary": true,
@@ -198,7 +198,7 @@
     },
     {
       "id": "completeness",
-      "criterion": "Each analysed item has function, failure mode, effect, cause, current controls, and ratings.",
+      "criterion": "PASS if every analysed item has function, failure mode, effect, cause, current controls, and ratings. FAIL otherwise.",
       "explanation": "",
       "weight": 35,
       "primary": false,
@@ -208,7 +208,7 @@
     },
     {
       "id": "grounding",
-      "criterion": "Failure modes and effects are supported by the retrieved design and defect sources.",
+      "criterion": "PASS if every failure mode and effect in the output is supported by the retrieved design and defect sources. FAIL otherwise.",
       "explanation": "",
       "weight": 30,
       "primary": false,
@@ -218,7 +218,7 @@
     },
     {
       "id": "actions",
-      "criterion": "Items above the action threshold carry a recommended action with an owner.",
+      "criterion": "PASS if every item above the action threshold carries a recommended action with a named owner. FAIL otherwise.",
       "explanation": "",
       "weight": 20,
       "primary": false,
@@ -228,7 +228,7 @@
     },
     {
       "id": "clarity",
-      "criterion": "Written unambiguously, appropriate for a controlled quality document.",
+      "criterion": "PASS if the output is written unambiguously, appropriate for a controlled quality document. FAIL otherwise.",
       "explanation": "",
       "weight": 15,
       "primary": false,
@@ -239,19 +239,14 @@
   ],
   "trajectory": {
     "description": "Provenance checks. These required sources are also the recipe's required steps - one declaration, two uses.",
-    "requiredSources": [
+    "required": [
       {
+        "kind": "document",
         "id": "fmea_procedure",
-        "match": "procedures/FMEA",
-        "reason": "DFMEA drafts must be grounded in the controlled FMEA procedure, which defines the rating scales."
+        "documentType": "fmea-procedure",
+        "reason": "A DFMEA's rating scales are defined by the controlled FMEA procedure; without it the ratings have no authority."
       }
     ],
-    "forbiddenSources": [
-      {
-        "id": "no_unapproved_drafts",
-        "match": "drafts/",
-        "reason": "Must not be grounded in unapproved draft material."
-      }
-    ]
+    "forbidden": []
   }
 }

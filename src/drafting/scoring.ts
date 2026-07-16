@@ -13,6 +13,7 @@
 // A `hybrid` criterion FAILs if EITHER the pattern check or the judge fails.
 
 import type { Rubric, Criterion, PatternRule } from "./rubric-schema.js";
+import type { TrajectoryResult } from "./trajectory-check.js";
 
 export type Verdict = "pass" | "fail";
 
@@ -73,9 +74,13 @@ export interface RubricResult {
   primaryFailures: string[];
   /** All critical criteria that failed. */
   criticalFailures: string[];
-  /** score >= threshold AND gatePassed. */
+  /** Did the run do what the rubric required to earn this document? Undefined
+   *  when no trajectory was supplied to score against. */
+  trajectory?: TrajectoryResult;
+  /** score >= threshold AND gatePassed AND the trajectory held. */
   approved: boolean;
-  /** Whether human review is forced (gate failed, or score below threshold, or any major fail). */
+  /** Whether human review is forced (gate failed, score below threshold, any
+   *  major fail, or a trajectory violation). */
   reviewRequired: boolean;
   perCriterion: CriterionVerdict[];
 }
@@ -89,6 +94,10 @@ export function scoreRubric(
   rubric: Rubric,
   verdicts: CriterionVerdict[],
   threshold = rubric.reviewThreshold,
+  /** What the run actually did. Omit only where no trajectory exists to judge
+   *  (e.g. the k-sampling harness, which scores a pasted document that no run
+   *  produced). Supplying it makes a trajectory violation an AUTO FAIL. */
+  trajectory?: TrajectoryResult,
 ): RubricResult {
   const byId = new Map(verdicts.map((v) => [v.id, v]));
 
@@ -120,14 +129,24 @@ export function scoreRubric(
 
   const score = weightPossible > 0 ? weightAwarded / weightPossible : 1;
   const gatePassed = criticalFailures.length === 0;
-  const approved = gatePassed && score >= threshold;
-  const reviewRequired = !gatePassed || score < threshold || anyMajorFail;
+
+  // A trajectory violation is an AUTO FAIL, deliberately NOT weighted into the
+  // score. A document produced without consulting the governing procedure is
+  // not a slightly worse document - it is an unsourced one, and no amount of
+  // quality elsewhere earns that back. Weighting it would let a model write its
+  // way out of not having looked. When no trajectory is supplied there is
+  // nothing to judge, so it cannot fail on that ground.
+  const trajectoryPassed = trajectory ? trajectory.passed : true;
+
+  const approved = gatePassed && trajectoryPassed && score >= threshold;
+  const reviewRequired = !gatePassed || !trajectoryPassed || score < threshold || anyMajorFail;
 
   return {
     score,
     gatePassed,
     primaryFailures,
     criticalFailures,
+    trajectory,
     approved,
     reviewRequired,
     perCriterion: rubric.criteria.map(

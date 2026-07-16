@@ -17,7 +17,7 @@
   "criteria": [
     {
       "id": "unique_identifiers",
-      "criterion": "Every risk has a unique identifier. Duplicate identifiers corrupt every count and every downstream cross-reference.",
+      "criterion": "PASS if every risk in the output has a unique identifier with no duplicates. FAIL otherwise.",
       "explanation": "",
       "weight": 10,
       "primary": true,
@@ -27,7 +27,7 @@
     },
     {
       "id": "no_unsupported_numbers",
-      "criterion": "Every score, likelihood, and impact traces to the retrieved data or the SQL results.",
+      "criterion": "PASS if every score, likelihood, and impact in the output traces to the retrieved data or SQL results. FAIL otherwise.",
       "explanation": "",
       "weight": 10,
       "primary": true,
@@ -37,7 +37,7 @@
     },
     {
       "id": "completeness",
-      "criterion": "Each risk has title, description, subsystem, owner, likelihood, impact, score, status.",
+      "criterion": "PASS if every risk has title, description, subsystem, owner, likelihood, impact, score, and status. FAIL otherwise.",
       "explanation": "",
       "weight": 40,
       "primary": false,
@@ -47,7 +47,7 @@
     },
     {
       "id": "grounding",
-      "criterion": "Risks are supported by the retrieved sources.",
+      "criterion": "PASS if every risk in the output is supported by the retrieved sources. FAIL otherwise.",
       "explanation": "",
       "weight": 40,
       "primary": false,
@@ -57,7 +57,7 @@
     },
     {
       "id": "clarity",
-      "criterion": "Written unambiguously.",
+      "criterion": "PASS if the output is written unambiguously. FAIL otherwise.",
       "explanation": "",
       "weight": 20,
       "primary": false,
@@ -68,19 +68,14 @@
   ],
   "trajectory": {
     "description": "Provenance checks against the recorded retrieval trajectory.",
-    "requiredSources": [
+    "required": [
       {
+        "kind": "document",
         "id": "risk_procedure",
-        "match": "procedures/RISK",
-        "reason": "Risk registers must be grounded in the controlled risk-management procedure, which defines the scoring scales."
+        "documentType": "risk-management-procedure",
+        "reason": "A risk register's scoring scales are defined by the controlled risk-management procedure; without it the scores are ungoverned."
       }
     ],
-    "forbiddenSources": [
-      {
-        "id": "no_unapproved_drafts",
-        "match": "drafts/",
-        "reason": "Must not be grounded in unapproved draft material."
-      }
-    ]
+    "forbidden": []
   }
 }

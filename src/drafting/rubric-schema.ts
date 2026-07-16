@@ -54,12 +54,35 @@ export const patternRuleSchema = z.object({
   label: z.string().default(""),
 });
 
+/**
+ * Every criterion must read: "PASS if <condition>. FAIL otherwise."
+ *
+ * The judge returns one bit, so the rule has to name the passing condition and
+ * nothing else. Prose like "failure modes should trace to a source" leaves the
+ * model to infer where the line sits, and it will infer differently on
+ * different runs - which is exactly what a coin-flip in the k-sampling report
+ * IS. Forcing the author to write the boundary down converts a class of
+ * ambiguity into a syntax error, caught at load rather than discovered as
+ * 12/20 variance three weeks later.
+ *
+ * The trailing "FAIL otherwise." is not decoration: it states that the
+ * condition is exhaustive, so anything not described is a fail rather than an
+ * open question.
+ */
+export const CRITERION_FORMAT = /^\s*PASS if\s+\S[\s\S]*\.\s*FAIL otherwise\.\s*$/;
+
 export const criterionSchema = z
   .object({
     id: z.string().min(1),
 
     // The PASS/FAIL rule, verbatim. This is what the judge is asked.
-    criterion: z.string().min(1),
+    criterion: z
+      .string()
+      .min(1)
+      .regex(
+        CRITERION_FORMAT,
+        'criterion must be written as "PASS if <condition>. FAIL otherwise." - the judge returns one bit, so the rule must name the passing condition exhaustively',
+      ),
     // Why, with examples of what a FAIL looks like. Given to the judge and
     // shown to the auditor.
     explanation: z.string().default(""),
@@ -97,12 +120,52 @@ export const criterionSchema = z
   });
 
 // --- Trajectory (provenance) ---
-export const sourceRuleSchema = z.object({
-  id: z.string().min(1),
-  // Substring/path fragment matched against retrieved source paths.
-  match: z.string().min(1),
-  reason: z.string().min(1),
-});
+//
+// What the agent must have DONE to produce this document, as opposed to what
+// the document must SAY. A trajectory requirement is about the process, and a
+// document can read perfectly while having been built on nothing - fluent,
+// plausible, and grounded in no source at all. That failure is invisible to
+// every criterion in the rubric, because the criteria only ever see the output.
+//
+// A trajectory miss is an AUTO FAIL. It is not weighed against the score: a
+// document produced without consulting the governing procedure is not a
+// slightly worse document, it is an unsourced one, and no amount of polish
+// elsewhere earns it back.
+//
+// Two kinds, because there are two ways to acquire a fact:
+//
+//   document - a document of this TYPE from the corpus had to be retrieved.
+//              Keyed on type rather than a path fragment: paths move when the
+//              QMS folder is reorganised, and a rubric that breaks because
+//              someone renamed a directory is a rubric nobody will trust.
+//
+//   agent    - another agent had to be asked. For facts the corpus cannot hold
+//              because they change: "current exchange rate AUD to USD" is not
+//              in a controlled document and must not be invented by the model.
+
+export const TRAJECTORY_KINDS = ["document", "agent"] as const;
+
+export const trajectoryRuleSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("document"),
+    id: z.string().min(1),
+    /** The document type that must appear in the retrieval trajectory. */
+    documentType: z.string().min(1),
+    /** WHY this source is required - read by the auditor, not the code. */
+    reason: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal("agent"),
+    id: z.string().min(1),
+    /** Which agent had to be called, e.g. "web". */
+    agent: z.string().min(1),
+    /** What it had to be asked, e.g. "current exchange rate AUD to USD". */
+    query: z.string().min(1),
+    reason: z.string().min(1),
+  }),
+]);
+
+export type TrajectoryRule = z.infer<typeof trajectoryRuleSchema>;
 
 export const rubricSchema = z.object({
   documentType: z.string().min(1),
@@ -176,16 +239,24 @@ export const rubricSchema = z.object({
   // without a recipe until the recipe is authored.
   recipe: recipeSchema.default({ steps: [] }),
 
-  trajectory: z.object({
-    description: z.string().default(""),
-    requiredSources: z.array(sourceRuleSchema).default([]),
-    forbiddenSources: z.array(sourceRuleSchema).default([]),
-  }),
+  // What the agent must have DONE to earn this document. Checked against the
+  // RECORDED trajectory of the run, not against the output text - the output
+  // cannot testify about how it was made. A miss is an auto fail (see
+  // trajectory-check.ts): unsourced is not a lesser grade of sourced.
+  trajectory: z
+    .object({
+      description: z.string().default(""),
+      /** Must ALL be satisfied. Any miss fails the document outright. */
+      required: z.array(trajectoryRuleSchema).default([]),
+      /** Must NONE be present. A hit fails the document outright - e.g. an
+       *  archived or superseded document type that must never inform a live one. */
+      forbidden: z.array(trajectoryRuleSchema).default([]),
+    })
+    .default({ description: "", required: [], forbidden: [] }),
 });
 
 export type Criterion = z.infer<typeof criterionSchema>;
 export type PatternRule = z.infer<typeof patternRuleSchema>;
-export type SourceRule = z.infer<typeof sourceRuleSchema>;
 export type Rubric = z.infer<typeof rubricSchema>;
 
 // A rubric plus the provenance stamp recorded on every evaluation it governs.

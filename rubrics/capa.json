@@ -14,7 +14,7 @@
   "criteria": [
     {
       "id": "no_fabricated_citations",
-      "criterion": "No regulatory clause, standard, or procedure is cited unless it appears in the retrieved sources. Fabricated or hallucinated references fail this criterion.",
+      "criterion": "PASS if every regulatory clause, standard, and procedure cited in the output appears in the retrieved sources. FAIL otherwise.",
       "explanation": "",
       "weight": 10,
       "primary": true,
@@ -24,7 +24,7 @@
     },
     {
       "id": "root_cause_substantive",
-      "criterion": "A root-cause analysis section is present and provides genuine analysis, not a restatement of the problem.",
+      "criterion": "PASS if the output contains a root-cause analysis section that gives genuine analysis rather than restating the problem. FAIL otherwise.",
       "explanation": "",
       "weight": 10,
       "primary": true,
@@ -34,7 +34,7 @@
     },
     {
       "id": "no_unsupported_numbers",
-      "criterion": "Every specific figure, count, or measurement in the document traces to the retrieved data or SQL results. Invented numbers fail this criterion.",
+      "criterion": "PASS if every specific figure, count, and measurement in the output traces to the retrieved data or SQL results. FAIL otherwise.",
       "explanation": "",
       "weight": 10,
       "primary": true,
@@ -44,7 +44,7 @@
     },
     {
       "id": "completeness",
-      "criterion": "Contains all required CAPA sections: problem statement, root-cause analysis, corrective action, preventive action, and verification plan.",
+      "criterion": "PASS if the output contains all required CAPA sections: problem statement, root-cause analysis, corrective action, preventive action, and verification plan. FAIL otherwise.",
       "explanation": "",
       "weight": 30,
       "primary": false,
@@ -54,7 +54,7 @@
     },
     {
       "id": "grounding",
-      "criterion": "Factual claims are supported by the retrieved sources and the exact data provided.",
+      "criterion": "PASS if every factual claim in the output is supported by the retrieved sources and the exact data provided. FAIL otherwise.",
       "explanation": "",
       "weight": 30,
       "primary": false,
@@ -64,7 +64,7 @@
     },
     {
       "id": "clarity",
-      "criterion": "Written clearly and unambiguously, appropriate for a controlled quality document.",
+      "criterion": "PASS if the output is written clearly and unambiguously, appropriate for a controlled quality document. FAIL otherwise.",
       "explanation": "",
       "weight": 20,
       "primary": false,
@@ -74,7 +74,7 @@
     },
     {
       "id": "citations",
-      "criterion": "References procedures, records, and data using correct identifiers.",
+      "criterion": "PASS if the output references procedures, records, and data using correct identifiers. FAIL otherwise.",
       "explanation": "",
       "weight": 20,
       "primary": false,
@@ -85,19 +85,14 @@
   ],
   "trajectory": {
     "description": "Provenance checks against the recorded retrieval trajectory.",
-    "requiredSources": [
+    "required": [
       {
+        "kind": "document",
         "id": "capa_procedure",
-        "match": "procedures/CAPA",
-        "reason": "CAPA drafts must be grounded in the controlled CAPA procedure."
+        "documentType": "capa-procedure",
+        "reason": "A CAPA must be grounded in the controlled CAPA procedure; producing one without consulting it means the process was never followed."
       }
     ],
-    "forbiddenSources": [
-      {
-        "id": "no_unapproved_drafts",
-        "match": "drafts/",
-        "reason": "Drafts must not be grounded in unapproved draft material."
-      }
-    ]
+    "forbidden": []
   }
 }

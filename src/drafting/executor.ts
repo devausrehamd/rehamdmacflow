@@ -114,12 +114,18 @@ export interface PersistConfig {
   originatingQueryId: string;
 }
 
+/** Called after each step completes, for progress streaming. Never throws into
+ *  the run: a reporting failure must not fail generation, so the executor
+ *  guards it. */
+export type StepProgress = (ev: { kind: Step["kind"]; index: number; total: number; status: "ok" }) => void;
+
 export async function executeRecipe(
   rubric: Rubric,
   steps: Step[],
   handlers: StepHandlers,
   custody: CustodyContext,
   persist?: PersistConfig,
+  onStep?: StepProgress,
 ): Promise<ExecutionResult> {
   const sectionIds = new Set(rubric.sections.map((s) => s.id));
   validateRecipe(steps, sectionIds);
@@ -128,7 +134,15 @@ export async function executeRecipe(
   let reviewRequired = false;
   let rubricResult: RubricResult | undefined;
 
-  for (const step of steps) {
+  const reportStep = (kind: Step["kind"], index: number) => {
+    try {
+      onStep?.({ kind, index, total: steps.length, status: "ok" });
+    } catch {
+      // A progress-report failure must never fail the run it reports on.
+    }
+  };
+
+  for (const [stepIndex, step] of steps.entries()) {
     let output: StepOutputs[keyof StepOutputs];
 
     // Every step is recorded into the run trace (agent_run_steps), keyed by the
@@ -199,6 +213,7 @@ export async function executeRecipe(
         }
 
         await record(output, "ok");
+        reportStep(step.kind, stepIndex);
         await appendEvent(custody, "human_decision", {
           ...custodyPayload(step, output),
           ...(persisted ? { draftSetId: persisted.setId, documentIds: persisted.documentIds } : {}),
@@ -216,6 +231,7 @@ export async function executeRecipe(
 
     bag[step.id] = output;
     await record(output, "ok");
+    reportStep(step.kind, stepIndex);
 
     // One custody event per step - references only.
     const eventType =

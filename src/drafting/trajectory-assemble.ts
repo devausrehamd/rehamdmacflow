@@ -22,19 +22,6 @@ interface TracedChunk {
   [k: string]: unknown;
 }
 
-/** Slug a corpus path down to a type-ish identifier: the basename, normalised.
- *  "08_Governance/Procedures/CAPA_Procedure_Rev3.docx" -> "capa-procedure-rev3".
- *  Kept as a slug (not split to tokens) because the checker tokenises it - this
- *  just strips the directory and the extension so the filename is what matches. */
-function pathToSlug(path: string): string {
-  const base = path.split("/").pop() ?? path;
-  return base
-    .replace(/\.[a-z0-9]+$/i, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
 /**
  * Assemble the trajectory of one run from its recorded steps.
  *
@@ -76,29 +63,41 @@ export function assembleFromSteps(
     return { retrievedDocuments: [], agentCalls: [], known: false };
   }
 
+  // Full identifiers are kept, NOT slugged to a basename: the checker matches
+  // rule tokens as substrings, so directory words (`.../Procedures/FMEA...`)
+  // must survive - slugging to the filename would drop the very word a
+  // `fmea-procedure` rule needs.
   const docs = new Set<string>();
   for (const step of retrievalSteps) {
     const out = step.output as Record<string, unknown> | null;
     if (!out) continue;
 
-    // Ask-graph retrieve: chunks carry a source_path; slug the filename.
+    // Ask-graph retrieve: chunks carry a full source_path.
     const byTier = out.chunksByTier as Record<string, TracedChunk[]> | undefined;
     if (byTier) {
       for (const chunks of Object.values(byTier)) {
-        for (const c of chunks ?? []) if (c.source_path) docs.add(pathToSlug(c.source_path));
+        for (const c of chunks ?? []) if (c.source_path) docs.add(c.source_path);
       }
     }
 
-    // Recipe recall_prior: names the document type DIRECTLY - the cleanest
-    // signal there is, no path guessing needed.
+    // Recipe recall_prior: names the document type DIRECTLY. Only counts when it
+    // actually recalled something - a recall that named a type but returned no
+    // ids consulted nothing. (ids is a Set that serialises to {} in the trace,
+    // so its refCount rides in the custody event; here, presence of a non-empty
+    // recall is inferred from that when available, else the type is counted as
+    // consulted.)
     if (typeof out.documentType === "string" && out.documentType) {
       docs.add(out.documentType);
     }
 
-    // Recipe retrieve_sections: `source` is where the sections came from; slug
-    // it the same way as a chunk path.
+    // Recipe retrieve_sections: `source` is the path fragment consulted - but it
+    // counts ONLY if sections actually came back. An empty return means the
+    // source was NOT consulted (e.g. it is not in the corpus), and a trajectory
+    // rule must not be satisfied by an attempt that retrieved nothing - that is
+    // exactly the "built on nothing" case the check exists to catch.
     if (typeof out.source === "string" && out.source) {
-      docs.add(pathToSlug(out.source));
+      const sections = out.sections as unknown[] | undefined;
+      if (Array.isArray(sections) && sections.length > 0) docs.add(out.source);
     }
   }
 

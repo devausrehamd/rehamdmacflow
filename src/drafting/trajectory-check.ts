@@ -83,16 +83,17 @@ function describe(rule: TrajectoryRule): string {
 
 function satisfied(rule: TrajectoryRule, actual: RecordedTrajectory): boolean {
   if (rule.kind === "document") {
-    // Token subset: every significant token of the required type must appear in
-    // some retrieved document's identifier. This matches on what the document
-    // IS (capa + procedure) rather than exactly what it is called, so a version
-    // suffix or a moved directory does not silently fail a valid run.
-    const want = tokens(rule.documentType);
-    if (want.size === 0) return false;
+    // Every significant token of the required type must appear as a SUBSTRING of
+    // some retrieved document's identifier. Substring, not exact token equality,
+    // so `procedure` is satisfied by `procedures` (plural) and by a path segment
+    // like `Procedures/`, and a version suffix or a moved directory does not
+    // silently fail a valid run. It matches on what the document IS (fmea +
+    // procedure) rather than exactly what it is called.
+    const want = [...tokens(rule.documentType)];
+    if (want.length === 0) return false;
     return actual.retrievedDocuments.some((doc) => {
-      const have = tokens(doc);
-      for (const t of want) if (!have.has(t)) return false;
-      return true;
+      const hay = doc.toLowerCase().replace(/[^a-z0-9]+/g, " ");
+      return want.every((t) => hay.includes(t));
     });
   }
   // An agent rule is satisfied by a call to that agent. The query is matched

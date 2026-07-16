@@ -34,6 +34,9 @@ import { appendEvent } from "../../custody/ledger.js";
 import { createHash } from "node:crypto";
 import { agent } from "../../agent/graph.js";
 import { classify } from "../../agent/classifier.js";
+import { getRubric } from "../../drafting/rubric-loader.js";
+import { executeRecipe } from "../../drafting/executor.js";
+import { makeProductionHandlers } from "../../drafting/production-handlers.js";
 import { buildTraceConfig, flushLangfuse } from "../../observability/langfuse.js";
 
 const HEARTBEAT_INTERVAL_MS = 15_000;
@@ -69,15 +72,25 @@ askRouter.post(
       return next(new ValidationError(classification.message));
     }
 
-    // Draft mode is not implemented in v1: the recipe executor has no caller on
-    // this path yet, so a draft request must be refused rather than quietly
-    // answered as if it were a question.
+    // Draft mode: a document-generation request. It runs the recipe pipeline
+    // (executeRecipe) rather than the ask graph, and is handled inside the
+    // stream below - resolve its rubric up front so an unknown type or a type
+    // with no authored recipe is refused before any streaming begins.
+    let draftRubric: ReturnType<typeof getRubric> | null = null;
     if (classification.mode === "draft") {
-      return next(
-        new ValidationError(
-          "Draft mode not yet implemented. Use ask mode (questions, not document generation requests).",
-        ),
-      );
+      try {
+        draftRubric = getRubric(classification.documentType);
+      } catch {
+        return next(new ValidationError(`No rubric for document type '${classification.documentType}'.`));
+      }
+      if (draftRubric.rubric.recipe.steps.length === 0) {
+        return next(
+          new ValidationError(
+            `The '${classification.documentType}' rubric has no recipe authored yet, so it cannot be generated. ` +
+              "Author a recipe (sections + steps) and commit it before requesting this document type.",
+          ),
+        );
+      }
     }
 
     // Set SSE headers BEFORE writing anything to the response
@@ -128,14 +141,14 @@ askRouter.post(
       // references only - the question is the user's own input, not retrieved
       // content, so it is recorded; no retrieved text ever enters the chain.
       await appendEvent(custodyCtx, "run_started", {
-        kind: "ask",
+        kind: classification.mode,
         requestId: req.ctx!.requestId,
       });
 
       // Create the QueryRecord BEFORE streaming so its ID can be returned
       // in the first event
       const query = await QueryRecord.create(req.ctx!, {
-        kind: "ask",
+        kind: classification.mode,
         question,
       });
       queryId = query.id;
@@ -147,6 +160,48 @@ askRouter.post(
         question,
         correlationId: req.ctx!.correlationId,
       });
+
+      // --- Draft mode: run the recipe pipeline, not the ask graph. ---
+      if (classification.mode === "draft" && draftRubric) {
+        const { rubric, contentHash } = draftRubric;
+        const draftCustody = { ...custodyCtx, rubricHash: contentHash };
+
+        // Real handlers over the caller's context - retrieval runs under the
+        // user's access labels. The executor records every step to the run
+        // trace, assembles the trajectory from it at the judge step, persists
+        // the draft, and halts for human review.
+        const result = await executeRecipe(
+          rubric,
+          rubric.recipe.steps,
+          makeProductionHandlers(req.ctx!),
+          draftCustody,
+          { documentType: rubric.documentType, subject: null, originatingQueryId: query.id },
+          (ev) =>
+            sendEvent("node-complete", {
+              node: ev.kind,
+              summary: `step ${ev.index + 1}/${ev.total}`,
+            }),
+        );
+
+        const r = result.rubricResult;
+        sendEvent("draft", {
+          correlationId: req.ctx!.correlationId,
+          documentType: rubric.documentType,
+          draftSetId: result.persisted?.setId ?? null,
+          documentIds: result.persisted?.documentIds ?? [],
+          // Everything the SERVER decided - the GUI displays, never recomputes.
+          score: r?.score ?? null,
+          approved: r?.approved ?? false,
+          gatePassed: r?.gatePassed ?? null,
+          trajectoryPassed: r?.trajectory?.passed ?? null,
+          reviewRequired: result.reviewRequired,
+          haltedForHuman: result.haltedForHuman,
+        });
+        sendEvent("done", { queryId: query.id, status: "halted_for_review", total_latency_ms: Date.now() - startTime });
+        clearInterval(heartbeat);
+        if (!res.writableEnded) res.end();
+        return;
+      }
 
       // Stream the graph execution. The user's bearer token is threaded into
       // the agent state so the SQL retrieval node can call the data API as the

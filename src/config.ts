@@ -39,10 +39,29 @@ const ConfigSchema = z.object({
   // Defaults to production: the safe mode must be the one you get by omission.
   mode: z.enum(AGENT_MODES),
 
-  // The git ref holding the RELEASED rubric set - what an agent pulls when it
-  // updates. Deliberately not "main": merging a rubric should not
-  // re-standardise every agent that happens to click update. Releasing is a
-  // second, deliberate act, so this points at a ref somebody has to move.
+  // THIS agent's identity: the sandbox, not the process. Both instances in a
+  // sandbox (production and debug) share it - the mode tells them apart.
+  //
+  // One name does three jobs, which is the point: it is the git ref holding
+  // this agent's released rubrics, it groups the two instances in the GUI, and
+  // it is what a person calls this thing. Spin up `eng-qms-agent` and its
+  // rubrics come from the `eng-qms-agent` tag.
+  //
+  // Constrained to a git-ref-safe slug because it IS a git ref. A display name
+  // with spaces cannot be one, and discovering that at update time - long after
+  // startup - would be far too late.
+  agentName: z
+    .string()
+    .min(1)
+    .regex(
+      /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/,
+      "QMS_AGENT_NAME is used as a git ref, so it must be a slug: letters, digits, dot, dash, underscore; no spaces or slashes (e.g. eng-qms-agent).",
+    ),
+
+  // The git ref holding the RELEASED rubric set. Defaults to the agent's name -
+  // each agent pulls the ref named after itself, so rubric sets are released
+  // per agent rather than globally. Deliberately never "main": merging a rubric
+  // should not re-standardise every agent that happens to click update.
   rubricsReleaseRef: z.string().min(1),
 
   ollama: z.object({
@@ -108,7 +127,10 @@ function loadConfig(): Config {
     // typo like QMS_MODE=Debug fails loudly at startup instead of quietly
     // running production.
     mode: process.env.QMS_MODE ?? "production",
-    rubricsReleaseRef: process.env.QMS_RUBRICS_RELEASE_REF ?? "origin/rubrics-release",
+    agentName: process.env.QMS_AGENT_NAME ?? "qms-agent",
+    // The agent's own tag by default; override only to point an agent at
+    // someone else's released set (e.g. a shared baseline).
+    rubricsReleaseRef: process.env.QMS_RUBRICS_RELEASE_REF ?? process.env.QMS_AGENT_NAME ?? "qms-agent",
 
     ollama: {
       baseUrl: process.env.OLLAMA_BASE_URL,

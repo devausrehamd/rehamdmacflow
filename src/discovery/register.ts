@@ -199,12 +199,15 @@ export function discoveryFromEnv(): DiscoveryClient | null {
 
   return new DiscoveryClient({
     discoveryUrl,
-    name: process.env.QMS_AGENT_NAME ?? (config.mode === "debug" ? "QMS Agent (debug)" : "QMS Agent"),
+    // Both instances in a sandbox carry the agent's name; `mode` is what tells
+    // them apart, so the name does not need "(debug)" glued onto it.
+    name: config.agentName,
     address: process.env.QMS_AGENT_ADDRESS ?? `http://localhost:${process.env.API_PORT ?? 4000}`,
     mode: config.mode,
-    // Both instances of one deployment set the SAME group, so the GUI can list
-    // them together. Left undefined the agent simply stands alone.
-    group: process.env.QMS_AGENT_GROUP,
+    // The sandbox IS the group: production and debug of `eng-qms-agent` are two
+    // views of one deployment, and they group under that name. Overridable only
+    // for the unusual case of grouping agents that are not one sandbox.
+    group: process.env.QMS_AGENT_GROUP ?? config.agentName,
     // Computed, not configured - the one value here an operator cannot get
     // wrong. Read at startup; rubrics are git files and do not change at
     // runtime. Never fatal: an agent with unreadable rubrics should still

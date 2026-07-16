@@ -44,7 +44,7 @@
     "smoke:review": "tsx scripts/smoke-test-review.ts",
     "smoke:rubric-api": "tsx scripts/smoke-test-rubric-api.ts",
     "smoke:batch": "tsx scripts/smoke-test-batch.ts",
-    "api:debug": "QMS_MODE=debug API_PORT=4001 QMS_AGENT_ADDRESS=http://localhost:4001 QMS_AGENT_NAME=\"QMS Agent (debug)\" npm run api"
+    "api:debug": "QMS_MODE=debug API_PORT=4001 QMS_AGENT_ADDRESS=http://localhost:4001 npm run api"
   },
   "dependencies": {
     "@langchain/core": "^1.1.48",

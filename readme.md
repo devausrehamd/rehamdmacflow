@@ -96,6 +96,7 @@ of one behaviour; reading them is the fastest way to learn the system.
 | `npm run smoke:dataplane` | The data plane works end-to-end before anything is built on top |
 | `npm run smoke:tables` | The structured-data foundation (tables → SQL) end-to-end |
 | `npm run smoke:custody` | The custody ledger, end-to-end against Postgres |
+| `npm run smoke:custody-dag` | The provenance DAG: events reference artifacts by hash; tampering an artifact or an event's inputs is detected; single-writer (custody-DAG Phase 2) |
 | `npm run smoke:custody:e2e` | Custody over **real HTTP** |
 | `npm run smoke:subject` | Project scoping and collection enumeration |
 | `npm run smoke:identity` | The entitlement seam (labels resolve, fail closed) |

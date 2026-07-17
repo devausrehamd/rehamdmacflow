@@ -21,6 +21,7 @@ import { validateRecipe } from "./recipe.js";
 import type { SectionValidation } from "./section-validator.js";
 import type { RubricResult } from "./scoring.js";
 import { appendEvent, type CustodyContext } from "../custody/ledger.js";
+import { DAG_INPUTS_KEY } from "../custody/dag.js";
 import { persistDraft, type PersistedDraft } from "./persist.js";
 
 // What each step can put into the output bag.
@@ -61,6 +62,19 @@ export interface ExecutionResult {
 }
 
 /** A custody payload for a step - references only, never generated text. */
+/** Artifact hashes gathered so far in this run, for the DAG `inputs` reference.
+ *  A gather step (Phase 5) puts `{ artifactIds: string[] }` into the bag; this
+ *  flattens them across the bag. Returns [] until such a step exists, so no
+ *  generation event changes shape yet. */
+function gatheredArtifactIds(bag: OutputBag): string[] {
+  const ids: string[] = [];
+  for (const v of Object.values(bag)) {
+    const maybe = (v as { artifactIds?: unknown } | undefined)?.artifactIds;
+    if (Array.isArray(maybe)) for (const x of maybe) if (typeof x === "string") ids.push(x);
+  }
+  return ids;
+}
+
 function custodyPayload(step: Step, output: unknown): Record<string, unknown> {
   switch (step.kind) {
     case "retrieve_sections": {
@@ -239,7 +253,16 @@ export async function executeRecipe(
       step.kind === "judge" ? "judge" :
       step.kind === "query_table" ? "sql_query" :
       "retrieval";
-    await appendEvent(custody, eventType, custodyPayload(step, output));
+    const payload = custodyPayload(step, output);
+    // The thinker (generate_section) commits, via the DAG convention, to the
+    // gathered artifacts it consumed. Absent until a gather step runs (Phase 5),
+    // so this is omitted when nothing was gathered - keeping today's generation
+    // events byte-identical while making the reference edge automatic later.
+    if (step.kind === "generate_section") {
+      const consumed = gatheredArtifactIds(bag);
+      if (consumed.length > 0) payload[DAG_INPUTS_KEY] = consumed;
+    }
+    await appendEvent(custody, eventType, payload);
   }
 
   return { bag, reviewRequired, rubricResult, haltedForHuman: false };

@@ -89,3 +89,19 @@ export async function getArtifact(id: string): Promise<Artifact | null> {
   const row = rows[0];
   return row ? (row.body as Artifact) : null;
 }
+
+/**
+ * Trust-but-verify: true iff the stored artifact for `id` still recomputes to
+ * `id`. False if it is missing, or its body has been altered so its content no
+ * longer matches its address.
+ *
+ * This is the second half of the tamper-evidence story. The linear chain
+ * (verifyChain) guarantees an event's recorded reference LIST was not edited;
+ * this guarantees the referenced ARTIFACT was not. Neither alone is enough — an
+ * attacker who swaps an artifact's body is caught here; one who rewrites the
+ * event's reference list is caught by the chain. See custody/dag.ts.
+ */
+export async function verifyArtifact(id: string): Promise<boolean> {
+  const a = await getArtifact(id);
+  return a !== null && artifactId(a) === id;
+}

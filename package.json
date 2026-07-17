@@ -36,6 +36,7 @@
     "smoke:dependency": "tsx scripts/smoke-test-dependency.ts",
     "smoke:subject": "tsx scripts/smoke-test-subject.ts",
     "smoke:artifacts": "tsx scripts/smoke-test-artifacts.ts",
+    "smoke:custody-dag": "tsx scripts/smoke-test-custody-dag.ts",
     "smoke:custody": "tsx scripts/smoke-test-custody.ts",
     "smoke:custody:e2e": "QMS_QDRANT_COLLECTION_OVERRIDE=qms_custody_e2e tsx scripts/smoke-test-e2e.ts",
     "smoke:section": "tsx scripts/smoke-test-section.ts",

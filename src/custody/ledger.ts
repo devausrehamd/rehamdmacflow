@@ -43,6 +43,12 @@ export type CustodyEventType =
   | "delegation_result" // the delegated agent returned
   | "document_finalized" // output bound by hash
   | "run_completed"
+  // Fan-in of a parallel GATHER phase: the orchestrator collected N
+  // content-addressed artifacts (from dumb researchers) and records them as one
+  // ordered event. The artifact hashes live in `payload.inputs` (see the DAG
+  // convention below), so this event commits to exactly which artifacts were
+  // gathered. See custody/dag.ts and docs/specs/SPEC-agent-topology-and-custody-dag.md.
+  | "gather_complete"
   // The released rubric set was pulled into this agent: from/to set hash, ref,
   // and which types moved. The STANDARD governing every later evaluation
   // changed here, so an auditor reading a verdict must be able to see when the
@@ -113,6 +119,21 @@ export function hashEntry(
  * Serialised per domain by an advisory lock, so two concurrent appends cannot
  * read the same head and fork the chain. The lock + read-head + insert happen
  * in one transaction.
+ *
+ * SINGLE-WRITER INVARIANT. This is the ONLY custody writer, and only the
+ * orchestrator (the executor / an ask route) may call it. Dumb role agents —
+ * researchers, and later the exporter and actioner — return data and NEVER
+ * write custody: the orchestrator hashes their output into an artifact and
+ * records it here. Do not add a second writer for a role agent; the whole
+ * point of the single writer is that the chain has one, serialisable, auditable
+ * source of ordered truth. (See docs/specs/SPEC-agent-topology-and-custody-dag.md.)
+ *
+ * DAG CONVENTION. An event that references content-addressed artifacts carries
+ * their hashes in `payload.inputs: string[]` — e.g. a `gather_complete` lists
+ * the artifacts gathered, a `generation` lists the artifacts the thinker
+ * consumed. Because `payload` is canonicalised into the entry hash, those
+ * references are tamper-evident from the chain side; the artifacts themselves
+ * are verified from the content side (custody/dag.ts + artifacts.verifyArtifact).
  */
 export async function appendEvent(
   ctx: CustodyContext,

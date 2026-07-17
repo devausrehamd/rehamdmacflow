@@ -130,6 +130,13 @@ export async function getArtifact(id: string): Promise<Artifact | null>;
 - **Drizzle migration:** table `custody_artifacts(hash text primary key, capability
   text, producer text, body jsonb not null, created_at timestamptz default now())`.
   `putArtifact` is an upsert on `hash` (same content → same row, no duplicate).
+  > **Migration convention (applies to every phase):** this repo **hand-authors**
+  > migrations — a numbered `drizzle/NNNN_*.sql` (idempotent `IF NOT EXISTS`,
+  > `--> statement-breakpoint` between statements) plus a manual entry in
+  > `drizzle/meta/_journal.json`. It keeps **no** drizzle snapshots. Do **not**
+  > run `drizzle-kit generate` — with no snapshot baseline it emits the entire
+  > schema as a spurious migration and pollutes the journal. Apply with
+  > `npm run db:migrate`.
 - **Invariant:** `artifactId` depends only on the artifact body — **no ordering,
   no chain reference.** This is what makes parallel producers race-free.
 

@@ -92,6 +92,7 @@ of one behaviour; reading them is the fastest way to learn the system.
 
 | Command | Proves |
 |---------|--------|
+| `npm run smoke:artifacts` | The content-addressed artifact store: canonical, collision-free, idempotent, round-trips (custody-DAG Phase 1) |
 | `npm run smoke:dataplane` | The data plane works end-to-end before anything is built on top |
 | `npm run smoke:tables` | The structured-data foundation (tables → SQL) end-to-end |
 | `npm run smoke:custody` | The custody ledger, end-to-end against Postgres |

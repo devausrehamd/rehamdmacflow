@@ -633,6 +633,32 @@ export const custody_events = pgTable(
   }),
 );
 
+// Content-addressed artifact store. An artifact is an immutable unit of
+// gathered/produced data (one researcher's result, etc.), keyed by the sha256
+// of its own canonical JSON. Identical content => one row, regardless of how
+// many concurrent producers write it or in what order: the hash depends only on
+// the bytes, never on a chain head. That is what makes parallel research
+// race-free. custody_events references these by hash (the provenance DAG); this
+// table is insert-only in application code (see custody/artifacts.ts).
+export const custody_artifacts = pgTable(
+  "custody_artifacts",
+  {
+    // sha256(canonicalJson(artifact)). The content address.
+    hash: varchar("hash", { length: 64 }).primaryKey(),
+    // The advertised capability that produced it, e.g. "research:qms".
+    capability: varchar("capability", { length: 64 }),
+    // Who produced it, e.g. "qms-researcher@<guid>" or "inproc:qms".
+    producer: varchar("producer", { length: 128 }),
+    // The full artifact body (producer, capability, query, result, producedAt,
+    // sourceRef). Stored verbatim so artifactId(body) recomputes to `hash`.
+    body: jsonb("body").notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    capabilityIdx: index("custody_artifacts_capability_idx").on(t.capability),
+  }),
+);
+
 // External anchors. The head entry_hash at a point in time, signed or
 // timestamped by something OFF this host. This is what turns "a log we keep"
 // into evidence: forging the chain now also requires forging a dated,

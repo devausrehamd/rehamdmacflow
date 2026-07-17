@@ -30,6 +30,12 @@ These numbered docs *are* the decision record — each explains **why**, not jus
 what. The exact cross-service token contract is in
 [09-services-and-auth.md](09-services-and-auth.md).
 
+**Build specs** (implementation plans for larger changes) live in
+[`specs/`](specs/): the next architecture step —
+[agent topology, custody DAG, capability dispatch & readiness gate](specs/SPEC-agent-topology-and-custody-dag.md)
+(researcher → thinker → exporter → actioner, with parallel-safe content-addressed
+provenance and a deterministic input gate before the LLM).
+
 ---
 
 ## Implementation status — read this before believing anything

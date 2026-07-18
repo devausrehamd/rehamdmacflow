@@ -283,10 +283,11 @@ export interface CapabilityRegistry {
   (order-independent);
 - assert no provider appended custody (single-writer holds).
 
-### Phase 6 — Exporter & Actioner (deferred; spec now, build later)
+### Phase 6 — Exporter & Actioner (in-process built; remote extraction later)
 
-Design so these drop into the **same capability dispatch** as `export:*` / `act:*`
-providers — first in-process, then remote agents resolved via Discovery.
+They drop into the **same capability dispatch** as `export:*` / `act:*` providers.
+The in-process providers are built and wired into the executor; extracting them
+into remote agents resolved via Discovery is the remaining milestone.
 
 - **Exporter:** pure `SectionModel → bytes`. Input contract is the existing
   `section-schema` output, **never markdown/prose** (parsing prose back to data

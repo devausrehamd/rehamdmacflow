@@ -53,6 +53,10 @@ export type CustodyEventType =
   // complete enough for the thinker, and the specific gaps if not. References
   // only — input ids and reasons, never the gathered values.
   | "readiness_gate"
+  // The actioner performed (or refused) an external write — the sole egress. The
+  // channel, the outcome (sent / duplicate / refused), and why. This is the
+  // record of what actually left the system.
+  | "action_taken"
   // The released rubric set was pulled into this agent: from/to set hash, ref,
   // and which types moved. The STANDARD governing every later evaluation
   // changed here, so an auditor reading a verdict must be able to see when the

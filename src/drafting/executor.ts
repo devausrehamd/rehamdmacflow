@@ -25,6 +25,9 @@ import { DAG_INPUTS_KEY, recordGather } from "../custody/dag.js";
 import { evaluateReadiness, bundleFromBag, type ReadinessResult, type ReadinessGap } from "./readiness.js";
 import { runGather } from "../orchestrator/gather.js";
 import type { CapabilityRegistry } from "../orchestrator/capabilities.js";
+import { putArtifact } from "../custody/artifacts.js";
+import type { DocumentModel, ExportResult, RenderedSection } from "../orchestrator/exporter.js";
+import type { ActionRequest, Receipt } from "../orchestrator/actioner.js";
 import { persistDraft, type PersistedDraft } from "./persist.js";
 
 // What each step can put into the output bag.
@@ -41,6 +44,8 @@ export interface StepOutputs {
   gather: { kind: "gather"; artifactIds: string[]; produced: string[] };
   // One gathered input, stored under `gathered:<produces>` for bundleFromBag.
   gathered_input: { produces: string; value: unknown; capability: string; artifactId: string };
+  export: { kind: "export"; format: string; filename: string; artifactId: string };
+  act: { kind: "act"; channel: string; status: string; idempotencyKey: string };
 }
 
 export type OutputBag = Record<string, StepOutputs[keyof StepOutputs] | undefined>;
@@ -84,6 +89,24 @@ function gatheredArtifactIds(bag: OutputBag): string[] {
     if (Array.isArray(maybe)) for (const x of maybe) if (typeof x === "string") ids.push(x);
   }
   return ids;
+}
+
+/** Assemble the exporter's document model from the rubric's declared sections and
+ *  the generated rows in the bag. The exporter takes this typed model, never
+ *  prose - re-parsing prose would reintroduce the non-determinism export removes. */
+function documentModelFromBag(rubric: Rubric, bag: OutputBag): DocumentModel {
+  const sections: RenderedSection[] = rubric.sections.map((spec) => {
+    let rows: Record<string, unknown>[] = [];
+    for (const v of Object.values(bag)) {
+      const o = v as { sectionId?: unknown; validation?: { rows?: { values?: Record<string, unknown> }[] } } | undefined;
+      if (o && o.sectionId === spec.id && o.validation?.rows) {
+        rows = o.validation.rows.map((r) => r.values ?? {});
+        break;
+      }
+    }
+    return { id: spec.id, title: spec.title, cardinality: spec.cardinality, rows };
+  });
+  return { documentType: rubric.documentType, title: rubric.displayName, sections };
 }
 
 function custodyPayload(step: Step, output: unknown): Record<string, unknown> {
@@ -291,15 +314,66 @@ export async function executeRecipe(
         reportStep(step.kind, stepIndex);
         continue;
       }
-      case "export":
-      case "act":
-        // Schema-declared (Phase 3) but not yet executable. Their handlers land
-        // in later phases of the agent-topology spec; until then a recipe that
-        // uses one fails loudly rather than silently producing nothing.
-        throw new Error(
-          `Step kind '${step.kind}' has no executor handler yet ` +
-            `(lands in a later phase of docs/specs/SPEC-agent-topology-and-custody-dag.md).`,
-        );
+      case "export": {
+        // Render the generated section model to bytes via a pure exporter
+        // (resolved by capability), and bind the output by hash. Because the
+        // model is custody-recorded, the document is reproducible from the ledger.
+        if (!registry) throw new Error(`Recipe '${rubric.documentType}' has an export step but no capability registry was provided.`);
+        const provider = registry.resolve(`export:${step.format}`);
+        if (!provider) throw new Error(`No exporter advertises 'export:${step.format}'.`);
+        const runCtx = { correlationId: custody.correlationId, runId: custody.runId, producedAt: new Date().toISOString() };
+        const { result } = await provider.run(documentModelFromBag(rubric, bag), runCtx);
+        const exportResult = result as ExportResult;
+        const artifactId = await putArtifact({
+          producer: `export:${step.format}@inproc`,
+          capability: `export:${step.format}`,
+          query: { documentType: rubric.documentType },
+          result: exportResult,
+          producedAt: runCtx.producedAt,
+        });
+        const eout: StepOutputs["export"] = { kind: "export", format: step.format, filename: exportResult.filename, artifactId };
+        bag[step.id] = eout;
+        await record(eout, "ok");
+        reportStep(step.kind, stepIndex);
+        await appendEvent(custody, "document_finalized", {
+          kind: "export",
+          format: step.format,
+          filename: exportResult.filename,
+          [DAG_INPUTS_KEY]: [artifactId],
+        });
+        continue;
+      }
+      case "act": {
+        // The sole egress. Dispatch to a gated, idempotent actioner (resolved by
+        // channel). The gate (approver != author) and idempotency live in the
+        // actioner; here we supply the author/approver from the custody context.
+        if (!registry) throw new Error(`Recipe '${rubric.documentType}' has an act step but no capability registry was provided.`);
+        const provider = registry.resolve(`act:${step.channel}`);
+        if (!provider) throw new Error(`No actioner advertises 'act:${step.channel}'.`);
+        const runCtx = { correlationId: custody.correlationId, runId: custody.runId, producedAt: new Date().toISOString() };
+        const req: ActionRequest = {
+          channel: step.channel,
+          payload: { documentType: rubric.documentType, correlationId: custody.correlationId },
+          authorId: custody.userId,
+          approverId: custody.approverId,
+          idempotencyKey: `${custody.correlationId}:${step.id}`,
+        };
+        const { result } = await provider.run(req, runCtx);
+        const receipt = result as Receipt;
+        const aout: StepOutputs["act"] = { kind: "act", channel: step.channel, status: receipt.status, idempotencyKey: receipt.idempotencyKey };
+        bag[step.id] = aout;
+        // A refused send (no independent approver) must not pass silently.
+        if (receipt.status === "refused") reviewRequired = true;
+        await record(aout, "ok");
+        reportStep(step.kind, stepIndex);
+        await appendEvent(custody, "action_taken", {
+          kind: "act",
+          channel: step.channel,
+          status: receipt.status,
+          reason: receipt.reason ?? null,
+        });
+        continue;
+      }
       case "require_human": {
         // The generated sections are still only in memory here. Persist them
         // BEFORE halting - this is the write that makes the draft durable and

@@ -40,6 +40,8 @@
     "smoke:doctype-contract": "tsx scripts/smoke-test-doctype-contract.ts",
     "smoke:readiness": "tsx scripts/smoke-test-readiness.ts",
     "smoke:gather": "tsx scripts/smoke-test-gather.ts",
+    "smoke:export": "tsx scripts/smoke-test-export.ts",
+    "smoke:act": "tsx scripts/smoke-test-act.ts",
     "smoke:custody": "tsx scripts/smoke-test-custody.ts",
     "smoke:custody:e2e": "QMS_QDRANT_COLLECTION_OVERRIDE=qms_custody_e2e tsx scripts/smoke-test-e2e.ts",
     "smoke:section": "tsx scripts/smoke-test-section.ts",

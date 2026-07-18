@@ -210,6 +210,29 @@ export const rubricSchema = z.object({
     )
     .default([]),
 
+  // --- Gathered research inputs (DISTINCT from `requires` above) ---
+  //
+  // `requires` names upstream GENERATED DOCUMENTS this document is built on.
+  // `requiredInputs` names the RESEARCH INPUTS the thinker needs - a labor rate,
+  // a headcount - each mapped to the capability that supplies it. A `gather`
+  // step `produces` one of these ids; the readiness gate (Phase 4) checks they
+  // are all present BEFORE the thinker runs. Do NOT fold this into `requires`:
+  // one is a document dependency, the other is an input to gather. See
+  // docs/specs/SPEC-agent-topology-and-custody-dag.md.
+  requiredInputs: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        description: z.string().min(1),
+        // The capability that supplies it, e.g. "research:sales".
+        capability: z.string().min(1),
+        // A missing required input halts at the readiness gate; an optional one
+        // is merely noted.
+        required: z.boolean().default(true),
+      }),
+    )
+    .default([]),
+
   // Typed artifacts downstream recipes may consume. Cross-references are DATA,
   // not prose: a downstream document reads `riskItems` structurally rather
   // than letting an LLM extract "RISK-014" from the upstream document's text.
@@ -224,6 +247,13 @@ export const rubricSchema = z.object({
       }),
     )
     .default({}),
+
+  // Allowed OUTPUT RENDER formats (e.g. "md", "docx", "xlsx") for an `export`
+  // step. DISTINCT from `exports` above, which are typed DATA artifacts a
+  // downstream document consumes: this is how the finished document is written
+  // out, that is what another document reads from it. An export step's `format`
+  // must be a member of this list.
+  exportFormats: z.array(z.string().min(1)).default([]),
 
   // The document's declared structure - the panels, cut from the SOP before
   // the model sews. Each section names its fields, their provenance

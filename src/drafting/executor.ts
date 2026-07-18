@@ -114,6 +114,14 @@ function custodyPayload(step: Step, output: unknown): Record<string, unknown> {
       const o = output as StepOutputs["require_human"];
       return { kind: step.kind, disposition: o.disposition };
     }
+    case "gather":
+    case "check_readiness":
+    case "export":
+    case "act":
+      // Unreachable in Phase 3 - these throw in the dispatch switch above before
+      // any custody event is emitted. Present for exhaustiveness; their real
+      // payloads land with their handlers.
+      return { kind: step.kind };
   }
 }
 
@@ -142,7 +150,12 @@ export async function executeRecipe(
   onStep?: StepProgress,
 ): Promise<ExecutionResult> {
   const sectionIds = new Set(rubric.sections.map((s) => s.id));
-  validateRecipe(steps, sectionIds);
+  validateRecipe(steps, sectionIds, {
+    // Intrinsic to the rubric, so enforced at load. The live capability set is
+    // injected once the orchestrator/Discovery is wired (Phase 5).
+    exportFormats: new Set(rubric.exportFormats),
+    inputIds: new Set(rubric.requiredInputs.map((r) => r.id)),
+  });
 
   const bag: OutputBag = {};
   let reviewRequired = false;
@@ -202,6 +215,17 @@ export async function executeRecipe(
         if (rubricResult.reviewRequired) reviewRequired = true;
         break;
       }
+      case "gather":
+      case "check_readiness":
+      case "export":
+      case "act":
+        // Schema-declared (Phase 3) but not yet executable. Their handlers land
+        // in later phases of the agent-topology spec; until then a recipe that
+        // uses one fails loudly rather than silently producing nothing.
+        throw new Error(
+          `Step kind '${step.kind}' has no executor handler yet ` +
+            `(lands in a later phase of docs/specs/SPEC-agent-topology-and-custody-dag.md).`,
+        );
       case "require_human": {
         // The generated sections are still only in memory here. Persist them
         // BEFORE halting - this is the write that makes the draft durable and

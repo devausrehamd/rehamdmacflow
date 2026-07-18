@@ -85,6 +85,7 @@ of one behaviour; reading them is the fastest way to learn the system.
 | `npm run smoke:executor` | The recipe interpreter end-to-end with **stub** handlers |
 | `npm run smoke:rubrics` | The rubric loader and the draft/review schema foundation |
 | `npm run smoke:rubric-api` | The rubric API's validation core, headless (no server, no GUI) |
+| `npm run smoke:doctype-contract` | The DocumentType contract: requiredInputs, capability-typed steps, and the capability/format pre-flight (custody-DAG Phase 3) |
 | `npm run smoke:review` | The review contract's pure parts: human-edit provenance + renderer |
 | `npm run smoke:batch` | The k-sampling instrument, with a **mock** judge of controllable variance |
 

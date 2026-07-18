@@ -178,7 +178,8 @@ must include `inputs: [artifact ids consumed]` (from the gather step, Phase 5).
   - `gather` — fan-out research; fields: `requires` (capability) **or** a list of
     sub-requests, `produces` (an input id from `requiredInputs`).
   - `check_readiness` — the hard gate (Phase 4).
-  - `export` — fields: `format` (must be in `rubric.exports`). Handler lands Phase 6.
+  - `export` — fields: `format` (must be in `rubric.exportFormats` — see the
+    naming note below; NOT `rubric.exports`). Handler lands Phase 6.
   - `act` — fields: `channel`. Handler lands Phase 6 (stub now).
 - Extend `validateRecipe(...)` with a **capability pre-flight**: given a provided
   set of capabilities, every `requires` must resolve, else `RecipeError("bad_target")`.
@@ -196,8 +197,12 @@ requiredInputs: z.array(z.object({
 ```
 
 - Keep `requires` and `exports` **as they are**. Add `requiredInputs` alongside.
-- The `exports` list already exists; ensure an `export` step's `format` must be a
-  member (validation error otherwise).
+- ⚠️ **`exports` is NOT output formats.** The existing `exports` is a *map of typed
+  DATA artifacts* downstream documents consume (`riskItems → schema`). Output
+  render formats (`md`/`docx`) are a different concept, so add a **new**
+  `exportFormats: string[]` field — do not overload `exports` (same trap as
+  `requires` vs `requiredInputs`). An `export` step's `format` must be a member of
+  `exportFormats`.
 
 **Acceptance — `smoke:doctype-contract`** (`scripts/smoke-test-doctype-contract.ts`, deterministic):
 - A doc type declaring `requiredInputs` + a `gather` step with `requires:"research:sales"`

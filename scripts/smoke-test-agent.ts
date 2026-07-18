@@ -3,9 +3,13 @@
 // Verify the agent graph executes end-to-end without going through HTTP.
 // Useful for debugging agent logic separately from API plumbing.
 //
-// Runs the agent with a system context (admin-equivalent permissions)
-// against a sample question. Prints each node's completion in order,
-// then displays the final answer.
+// Runs the agent with a system context against a sample question, and logs into
+// the ID Server first so a real bearer token is threaded into the graph state.
+// Without a token the SQL-retrieval node degrades to vector-only ("no auth token
+// in state, skipping SQL retrieval"); logging in exercises the full hybrid path.
+// Prints each node's completion in order, then displays the final answer.
+//
+// Needs the ID Server running (:3001) with the login user in its directory.
 //
 // Usage:
 //   npm run integration:agent
@@ -23,6 +27,30 @@ const YELLOW = "\x1b[1;33m";
 const RED = "\x1b[0;31m";
 const NC = "\x1b[0m";
 
+// The stack's auth server is the ID Server; the Agent trusts the tokens it signs
+// (shared JWT secret) and resolves entitlements from it. Log in there to get the
+// same bearer token an HTTP /ask request would carry.
+const IDSERVER_URL = process.env.QMS_IDENTITY_URL ?? "http://localhost:3001";
+const LOGIN_USER = process.env.QMS_SMOKE_USER ?? "dmaher";
+const LOGIN_PASS = process.env.QMS_SMOKE_PASSWORD ?? "thisisatest";
+
+async function login(): Promise<string> {
+  const res = await fetch(`${IDSERVER_URL}/v1/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId: LOGIN_USER, password: LOGIN_PASS }),
+  });
+  if (!res.ok) {
+    throw new Error(
+      `Login failed (${res.status}) at ${IDSERVER_URL}/v1/login as '${LOGIN_USER}'. ` +
+        `Is the ID Server running (./stack.sh start idserver) and is '${LOGIN_USER}' in its directory?`,
+    );
+  }
+  const body = (await res.json()) as { token?: string };
+  if (!body.token) throw new Error("ID Server login returned no token.");
+  return body.token;
+}
+
 async function main(): Promise<void> {
   const question =
     process.argv.slice(2).join(" ").trim() ||
@@ -32,6 +60,10 @@ async function main(): Promise<void> {
   console.log(`Question: ${question}\n`);
 
   const ctx = buildSystemContext();
+
+  console.log(`Logging in as '${LOGIN_USER}' at ${IDSERVER_URL} ...`);
+  const authToken = await login();
+  console.log("  got bearer token\n");
 
   console.log("Creating QueryRecord...");
   const query = await QueryRecord.create(ctx, { kind: "ask", question });
@@ -48,6 +80,7 @@ async function main(): Promise<void> {
         queryId: query.id,
         ctx,
         question,
+        authToken,
       },
       buildTraceConfig({
         queryId: query.id,
@@ -108,9 +141,13 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch(async (err) => {
-  console.error("Crashed:", err);
-  await closeAllServices().catch(() => {});
-  await closeDb().catch(() => {});
-  process.exit(1);
-});
+main()
+  // Exit promptly on success - otherwise a lingering trace-flush / client handle
+  // can keep the process alive long after the run has finished.
+  .then(() => process.exit(0))
+  .catch(async (err) => {
+    console.error("Crashed:", err);
+    await closeAllServices().catch(() => {});
+    await closeDb().catch(() => {});
+    process.exit(1);
+  });

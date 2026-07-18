@@ -146,9 +146,9 @@ Good first contribution.
 ## Try it
 
 ```bash
-npm run smoke:hybrid    # both lanes
+npm run integration:hybrid    # both lanes
 npm run smoke:subject   # scoping + enumeration coverage
-npm run smoke:agent     # the full graph
+npm run integration:agent     # the full graph
 ```
 
 **Experiment:** set `TABLE_TOP_K = 1`, add a fourth risk register, and ask an

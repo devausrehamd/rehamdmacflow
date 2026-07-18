@@ -159,7 +159,7 @@
     {
       "label": "\ud83e\uddea Smoke: Test agent",
       "type": "shell",
-      "command": "npm run smoke:agent -- \"${input:agentQuestion}\"",
+      "command": "npm run integration:agent -- \"${input:agentQuestion}\"",
       "detail": "Run the agent graph end-to-end without HTTP. Prompts for a question.",
       "problemMatcher": [],
       "presentation": {
@@ -187,7 +187,7 @@
     {
       "label": "\ud83e\uddea Smoke: Test hybrid retrieval",
       "type": "shell",
-      "command": "npm run smoke:hybrid",
+      "command": "npm run integration:hybrid",
       "detail": "End-to-end: agent queries SQL via the data API and exact data reaches the answer",
       "problemMatcher": [],
       "presentation": {
@@ -341,7 +341,7 @@
     {
       "label": "\ud83d\udcdc Smoke: Test custody END-TO-END (HTTP /ask -> /custody)",
       "type": "shell",
-      "command": "npm run smoke:custody:e2e",
+      "command": "npm run integration:custody-e2e",
       "detail": "Full stack: POST /ask over HTTP, capture the correlation id, GET /custody/:id, and assert the chain contains run_started -> retrieval -> sql_query -> run_completed and self-verifies. Needs Postgres, Qdrant, Ollama, Redis.",
       "problemMatcher": [],
       "presentation": {

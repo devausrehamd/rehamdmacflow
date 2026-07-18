@@ -10,7 +10,7 @@ Two lanes, because prose and tables fail differently.
 ```
 
 **No LLM anywhere in ingestion.** Everything here is deterministic and testable
-(`npm run smoke:tables`, `npm run smoke:hybrid`).
+(`npm run smoke:tables`, `npm run integration:hybrid`).
 
 ---
 
@@ -161,7 +161,7 @@ same blurb + registry pattern. Declarative: a descriptor file per source, no cod
 
 ```bash
 npm run smoke:tables    # table loading, schema inference, tier semantics
-npm run smoke:hybrid    # blurb generation + both retrieval lanes
+npm run integration:hybrid    # blurb generation + both retrieval lanes
 npm run smoke:xlsx      # the xlsx path end to end
 ```
 

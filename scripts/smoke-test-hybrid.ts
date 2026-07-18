@@ -10,7 +10,7 @@
 //   6. Cleans up table, user, and Qdrant blurb
 //
 // Usage:
-//   npm run smoke:hybrid
+//   npm run integration:hybrid
 //
 // Requires the full stack running (Ollama, Qdrant, Redis, Postgres).
 

@@ -117,7 +117,7 @@ carried — but not enforced on every path yet. **Before flipping it on:**
 
 - `src/api/routes/data.ts` — **the biggest hole**: three routes disclose data and
   `table_registry.access_labels` exists but no route reads it.
-- `smoke:hybrid` fixture writes a blurb with no labels.
+- `integration:hybrid` fixture writes a blurb with no labels.
 - Preflight `is_empty=0`.
 - Langfuse hardening (see below).
 

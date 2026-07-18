@@ -8,8 +8,8 @@
 // then displays the final answer.
 //
 // Usage:
-//   npm run smoke:agent
-//   npm run smoke:agent -- "what does the SDP need to include for Class B"
+//   npm run integration:agent
+//   npm run integration:agent -- "what does the SDP need to include for Class B"
 
 import { buildSystemContext } from "../src/context.js";
 import { QueryRecord } from "../src/queries.js";

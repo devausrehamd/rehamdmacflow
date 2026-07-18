@@ -132,7 +132,7 @@ scheduled, **4** decided explicitly rather than by default.
 
 ```bash
 npm run smoke:custody      # chain integrity, tamper detection
-npm run smoke:custody:e2e  # a full run's chain
+npm run integration:custody-e2e  # a full run's chain
 curl localhost:4000/api/v1/custody/<correlationId> | json_pp
 ```
 

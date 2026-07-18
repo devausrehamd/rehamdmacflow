@@ -102,19 +102,30 @@ of one behaviour; reading them is the fastest way to learn the system.
 | `npm run smoke:custody-dag` | The provenance DAG: events reference artifacts by hash; tampering an artifact or an event's inputs is detected; single-writer (custody-DAG Phase 2) |
 | `npm run smoke:readiness` | The readiness gate: a deterministic input-completeness check that halts before the thinker with named gaps (custody-DAG Phase 4) |
 | `npm run smoke:gather` | Capability dispatch + parallel gather: fan-out to providers, order-independent artifact ids, one gather_complete, single-writer (custody-DAG Phase 5) |
-| `npm run smoke:custody:e2e` | Custody over **real HTTP** |
 | `npm run smoke:subject` | Project scoping and collection enumeration |
 | `npm run smoke:identity` | The entitlement seam (labels resolve, fail closed) |
 | `npm run smoke:security` | The enforcement chain end-to-end against a live Qdrant |
-| `npm run smoke:hybrid` | Hybrid retrieval — the agent querying SQL *and* vectors |
 | `npm run smoke:auth` | The auth layer end-to-end |
-| `npm run smoke:agent` | The agent graph executes end-to-end (without going through HTTP) |
 
 ### Needs Ollama — real generation
 
 | Command | Proves |
 |---------|--------|
 | `npm run smoke:draft-e2e` | **Real** document generation: the actual LLM handlers through the recipe |
+
+### Integration tests — a live, entitled, LLM-backed stack
+
+These are **not** part of the fast smoke suite: each drives the full agent through
+many real Ollama calls (minutes, not seconds) and needs an authenticated context
+whose subject carries the engineering-domain entitlements the agent's SQL path
+requires. Run them deliberately against a running stack, not in the inner loop.
+
+| Command | Exercises |
+|---------|-----------|
+| `npm run integration:agent` | The agent graph end-to-end (understand → retrieve → SQL → draft → reconcile) |
+| `npm run integration:hybrid` | Hybrid retrieval — the agent querying SQL *and* vectors for a count |
+| `npm run integration:custody-e2e` | Custody over **real HTTP**: ask → correlation id → dossier export |
+| `npm run integration` | All three, in sequence |
 
 ## Other tasks
 

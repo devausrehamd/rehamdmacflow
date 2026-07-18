@@ -13,11 +13,11 @@
 // This is the auditor's actual workflow: ask produces a document, the caller
 // gets a correlation id, that id retrieves a self-verifying custody record.
 //
-// Needs Postgres, Qdrant, Ollama, Redis - the full stack, like smoke:hybrid.
+// Needs Postgres, Qdrant, Ollama, Redis - the full stack, like integration:hybrid.
 // It reuses the hybrid fixture (one embedded blurb) so the agent has something
 // to retrieve and a table to query.
 //
-// Usage: npm run smoke:custody:e2e
+// Usage: npm run integration:custody-e2e
 
 import type { Server } from "node:http";
 import { createServer } from "../src/api/server.js";

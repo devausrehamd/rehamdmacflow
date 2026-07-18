@@ -175,8 +175,10 @@ must include `inputs: [artifact ids consumed]` (from the gather step, Phase 5).
 - Extend the base step with optional `requires: z.string().optional()` (a
   capability id like `research:qms`, `export:docx`, `act:email`).
 - Add new step kinds to `STEP_KINDS` + `stepSchema`:
-  - `gather` — fan-out research; fields: `requires` (capability) **or** a list of
-    sub-requests, `produces` (an input id from `requiredInputs`).
+  - `gather` — a fan-out: `requests: [{ requires (capability), produces (a
+    requiredInputs id), query? }]`. One step dispatches to N capabilities in
+    parallel and records ONE `gather_complete`, so three researchers = one step,
+    not three. (Phase 5 wires the handler.)
   - `check_readiness` — the hard gate (Phase 4).
   - `export` — fields: `format` (must be in `rubric.exportFormats` — see the
     naming note below; NOT `rubric.exports`). Handler lands Phase 6.

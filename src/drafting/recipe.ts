@@ -96,12 +96,20 @@ export const stepSchema = z.discriminatedUnion("kind", [
   z.object({
     ...baseStep,
     kind: z.literal("gather"),
-    // The research capability that supplies this input. Mandatory here (overrides
-    // the optional base `requires`): a gather with no capability gathers nothing.
-    requires: z.string().min(1),
-    // The rubric.requiredInputs id this gather produces, e.g. "labor_rate".
-    // validateRecipe checks it is a declared input.
-    produces: z.string().min(1),
+    // A gather FANS OUT: each request dispatches to one research capability and
+    // produces one requiredInputs id. The orchestrator runs them in PARALLEL
+    // (dumb researchers) and records ONE gather_complete for the whole fan-in.
+    // validateRecipe checks each `requires` is advertised and each `produces` is
+    // a declared requiredInput.
+    requests: z
+      .array(
+        z.object({
+          requires: z.string().min(1), // the capability, e.g. "research:qms"
+          produces: z.string().min(1), // the requiredInputs id it supplies
+          query: z.unknown().optional(), // optional query payload for the provider
+        }),
+      )
+      .min(1),
   }),
   z.object({
     ...baseStep,
@@ -204,11 +212,21 @@ export function validateRecipe(
       );
     }
 
-    if (step.kind === "gather" && ctx.inputIds && !ctx.inputIds.has(step.produces)) {
-      throw new RecipeError(
-        "bad_target",
-        `Gather step '${step.id}' produces '${step.produces}', which rubric.requiredInputs does not declare.`,
-      );
+    if (step.kind === "gather") {
+      for (const req of step.requests) {
+        if (ctx.capabilities && !ctx.capabilities.has(req.requires)) {
+          throw new RecipeError(
+            "bad_target",
+            `Gather step '${step.id}' requires capability '${req.requires}', which no agent advertises.`,
+          );
+        }
+        if (ctx.inputIds && !ctx.inputIds.has(req.produces)) {
+          throw new RecipeError(
+            "bad_target",
+            `Gather step '${step.id}' produces '${req.produces}', which rubric.requiredInputs does not declare.`,
+          );
+        }
+      }
     }
 
     if (step.kind === "export" && ctx.exportFormats && !ctx.exportFormats.has(step.format)) {

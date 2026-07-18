@@ -78,13 +78,15 @@ function main(): void {
 
   // --- 2. New step kinds parse. ---
   const pipeline = steps(
-    { id: "g_rate", kind: "gather", requires: "research:sales", produces: "labor_rate" },
-    { id: "g_head", kind: "gather", requires: "research:qms", produces: "headcount" },
-    { id: "ready", kind: "check_readiness", inputs: ["g_rate", "g_head"] },
+    { id: "g", kind: "gather", requests: [
+      { requires: "research:sales", produces: "labor_rate" },
+      { requires: "research:qms", produces: "headcount" },
+    ] },
+    { id: "ready", kind: "check_readiness", inputs: ["g"] },
     { id: "write", kind: "export", format: "md", inputs: ["ready"] },
     { id: "send", kind: "act", channel: "email", inputs: ["write"] },
   );
-  check("gather / check_readiness / export / act all parse", pipeline.length === 5);
+  check("gather (fan-out) / check_readiness / export / act all parse", pipeline.length === 4);
 
   const inputIds = new Set(["labor_rate", "headcount"]);
   const exportFormats = new Set(["md", "docx"]);
@@ -109,7 +111,7 @@ function main(): void {
   // --- 4. gather.produces must be a declared requiredInput. ---
   expectBadTarget("gather produces an undeclared input -> bad_target", () =>
     validateRecipe(
-      steps({ id: "g", kind: "gather", requires: "research:sales", produces: "not_declared" }),
+      steps({ id: "g", kind: "gather", requests: [{ requires: "research:sales", produces: "not_declared" }] }),
       noSections,
       { inputIds },
     ),

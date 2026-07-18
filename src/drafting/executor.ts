@@ -21,8 +21,10 @@ import { validateRecipe } from "./recipe.js";
 import type { SectionValidation } from "./section-validator.js";
 import type { RubricResult } from "./scoring.js";
 import { appendEvent, type CustodyContext } from "../custody/ledger.js";
-import { DAG_INPUTS_KEY } from "../custody/dag.js";
+import { DAG_INPUTS_KEY, recordGather } from "../custody/dag.js";
 import { evaluateReadiness, bundleFromBag, type ReadinessResult, type ReadinessGap } from "./readiness.js";
+import { runGather } from "../orchestrator/gather.js";
+import type { CapabilityRegistry } from "../orchestrator/capabilities.js";
 import { persistDraft, type PersistedDraft } from "./persist.js";
 
 // What each step can put into the output bag.
@@ -35,6 +37,10 @@ export interface StepOutputs {
   judge: { result: RubricResult };
   require_human: { disposition: "pending" | "approved" | "rejected" | "rerun" };
   check_readiness: { ready: boolean; gaps: ReadinessGap[] };
+  // A gather step's summary output (its artifact ids feed the DAG `inputs` edge).
+  gather: { kind: "gather"; artifactIds: string[]; produced: string[] };
+  // One gathered input, stored under `gathered:<produces>` for bundleFromBag.
+  gathered_input: { produces: string; value: unknown; capability: string; artifactId: string };
 }
 
 export type OutputBag = Record<string, StepOutputs[keyof StepOutputs] | undefined>;
@@ -153,11 +159,13 @@ export async function executeRecipe(
   custody: CustodyContext,
   persist?: PersistConfig,
   onStep?: StepProgress,
+  registry?: CapabilityRegistry,
 ): Promise<ExecutionResult> {
   const sectionIds = new Set(rubric.sections.map((s) => s.id));
   validateRecipe(steps, sectionIds, {
-    // Intrinsic to the rubric, so enforced at load. The live capability set is
-    // injected once the orchestrator/Discovery is wired (Phase 5).
+    // The live capability set, when a registry is supplied, so a gather/export/act
+    // that names an unavailable capability fails at load rather than mid-run.
+    capabilities: registry?.available(),
     exportFormats: new Set(rubric.exportFormats),
     inputIds: new Set(rubric.requiredInputs.map((r) => r.id)),
   });
@@ -248,7 +256,41 @@ export async function executeRecipe(
         }
         continue; // ready: proceed to the next step
       }
-      case "gather":
+      case "gather": {
+        // Fan out to the research capabilities IN PARALLEL (dumb providers), each
+        // yielding one content-addressed artifact. runGather stores the artifacts
+        // but writes NO custody; the orchestrator (here) records the single
+        // gather_complete over their ids - the single-writer invariant.
+        if (!registry) {
+          throw new Error(`Recipe '${rubric.documentType}' has a gather step but no capability registry was provided.`);
+        }
+        const runCtx = { correlationId: custody.correlationId, runId: custody.runId, producedAt: new Date().toISOString() };
+        const outcome = await runGather(step.requests, registry, runCtx);
+        await recordGather(custody, outcome.artifactIds);
+
+        // The step's own bag entry: the artifact ids (which gatheredArtifactIds
+        // threads into the thinker's generation event via the DAG convention).
+        const gout: StepOutputs["gather"] = {
+          kind: "gather",
+          artifactIds: outcome.artifactIds,
+          produced: outcome.inputs.map((i) => i.produces),
+        };
+        bag[step.id] = gout;
+        // Each gathered input as its own bag entry, so bundleFromBag (readiness)
+        // and the thinker read them by input id.
+        for (const inp of outcome.inputs) {
+          const entry: StepOutputs["gathered_input"] = {
+            produces: inp.produces,
+            value: inp.value,
+            capability: inp.capability,
+            artifactId: inp.artifactId,
+          };
+          bag[`gathered:${inp.produces}`] = entry;
+        }
+        await record(gout, "ok");
+        reportStep(step.kind, stepIndex);
+        continue;
+      }
       case "export":
       case "act":
         // Schema-declared (Phase 3) but not yet executable. Their handlers land

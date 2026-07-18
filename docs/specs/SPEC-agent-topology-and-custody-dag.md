@@ -214,15 +214,17 @@ requiredInputs: z.array(z.object({
 
 **New:** `src/drafting/readiness.ts`
 
-- A **deterministic** evaluator over the gathered input bundle (the `OutputBag`
-  entries produced by `gather` steps). Reuse the criterion shape but restrict to
-  `assessmentType: "deterministic"`; **no `llm_judge` in the hard gate.**
-- Two sources of readiness criteria (support both):
-  1. **Derived** automatically from `rubric.requiredInputs` — each `required` input
-     becomes `PASS if <id> is present from a <capability> source. FAIL otherwise.`
-  2. **Explicit** deterministic criteria authored on the rubric (range/format
-     checks, e.g. `duration_weeks` in 1–260).
-- Output: `{ ready: boolean, gaps: { inputId, capability, reason }[] }`.
+- A **deterministic** evaluator over the gathered input bundle (`bundleFromBag`
+  reads the `OutputBag` entries a `gather` step produces). **No LLM in the hard gate.**
+- The checks are driven entirely by `rubric.requiredInputs` — no separate
+  criteria list. (The criterion/`patterns` model fits regexes over *output text*,
+  not typed *input values*, so constraints live on the input manifest instead —
+  the same reason `requiredInputs` ≠ `criteria`.) Two check kinds:
+  1. **Presence** — a `required` input that was not gathered is a gap.
+  2. **Validity** — optional `min` / `max` / `pattern` constraints on a
+     `requiredInputs` entry are checked when the input is present (e.g.
+     `duration_weeks` in 1–260).
+- Output: `{ ready: boolean, gaps: { inputId, capability, reason }[], checked }`.
 
 **Edit:** `src/drafting/executor.ts`
 

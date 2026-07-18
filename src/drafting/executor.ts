@@ -22,6 +22,7 @@ import type { SectionValidation } from "./section-validator.js";
 import type { RubricResult } from "./scoring.js";
 import { appendEvent, type CustodyContext } from "../custody/ledger.js";
 import { DAG_INPUTS_KEY } from "../custody/dag.js";
+import { evaluateReadiness, bundleFromBag, type ReadinessResult, type ReadinessGap } from "./readiness.js";
 import { persistDraft, type PersistedDraft } from "./persist.js";
 
 // What each step can put into the output bag.
@@ -33,6 +34,7 @@ export interface StepOutputs {
   validate_section: { sectionId: string; validation: SectionValidation };
   judge: { result: RubricResult };
   require_human: { disposition: "pending" | "approved" | "rejected" | "rerun" };
+  check_readiness: { ready: boolean; gaps: ReadinessGap[] };
 }
 
 export type OutputBag = Record<string, StepOutputs[keyof StepOutputs] | undefined>;
@@ -59,6 +61,9 @@ export interface ExecutionResult {
   haltedForHuman: boolean;
   /** The persisted draft, when persistence was configured. */
   persisted?: PersistedDraft;
+  /** The readiness gate's verdict, when a check_readiness step ran. When it is
+   *  not ready the run halts here (before the thinker) and this carries the gaps. */
+  readiness?: ReadinessResult;
 }
 
 /** A custody payload for a step - references only, never generated text. */
@@ -160,6 +165,7 @@ export async function executeRecipe(
   const bag: OutputBag = {};
   let reviewRequired = false;
   let rubricResult: RubricResult | undefined;
+  let readinessResult: ReadinessResult | undefined;
 
   const reportStep = (kind: Step["kind"], index: number) => {
     try {
@@ -215,8 +221,34 @@ export async function executeRecipe(
         if (rubricResult.reviewRequired) reviewRequired = true;
         break;
       }
+      case "check_readiness": {
+        // The deterministic input gate, BEFORE the thinker. Reads the gathered
+        // bundle from the bag (empty until a gather step runs) and decides
+        // whether generation may proceed. No LLM.
+        const readiness = evaluateReadiness(rubric, bundleFromBag(bag));
+        readinessResult = readiness;
+        const rout: StepOutputs["check_readiness"] = { ready: readiness.ready, gaps: readiness.gaps };
+        bag[step.id] = rout;
+        await record(rout, "ok");
+        reportStep(step.kind, stepIndex);
+        // The orchestrator records the gate outcome - references only (input ids
+        // and reasons), never the gathered values.
+        await appendEvent(custody, "readiness_gate", {
+          kind: "check_readiness",
+          ready: readiness.ready,
+          checked: readiness.checked,
+          gaps: readiness.gaps,
+        });
+        if (!readiness.ready) {
+          // HARD GATE: the thinker never runs on an incomplete input set. Halt
+          // with the gaps. Re-dispatching the missing capability under a retry
+          // policy is the deferred alternative (see the spec's open decisions).
+          reviewRequired = true;
+          return { bag, reviewRequired, rubricResult, haltedForHuman: false, readiness: readinessResult };
+        }
+        continue; // ready: proceed to the next step
+      }
       case "gather":
-      case "check_readiness":
       case "export":
       case "act":
         // Schema-declared (Phase 3) but not yet executable. Their handlers land
@@ -256,7 +288,7 @@ export async function executeRecipe(
           ...custodyPayload(step, output),
           ...(persisted ? { draftSetId: persisted.setId, documentIds: persisted.documentIds } : {}),
         });
-        return { bag, reviewRequired, rubricResult, haltedForHuman: true, persisted };
+        return { bag, reviewRequired, rubricResult, haltedForHuman: true, persisted, readiness: readinessResult };
       }
     }
     } catch (err) {
@@ -289,5 +321,5 @@ export async function executeRecipe(
     await appendEvent(custody, eventType, payload);
   }
 
-  return { bag, reviewRequired, rubricResult, haltedForHuman: false };
+  return { bag, reviewRequired, rubricResult, haltedForHuman: false, readiness: readinessResult };
 }

@@ -49,6 +49,10 @@ export type CustodyEventType =
   // convention below), so this event commits to exactly which artifacts were
   // gathered. See custody/dag.ts and docs/specs/SPEC-agent-topology-and-custody-dag.md.
   | "gather_complete"
+  // The deterministic readiness gate ran: whether the gathered input bundle was
+  // complete enough for the thinker, and the specific gaps if not. References
+  // only — input ids and reasons, never the gathered values.
+  | "readiness_gate"
   // The released rubric set was pulled into this agent: from/to set hash, ref,
   // and which types moved. The STANDARD governing every later evaluation
   // changed here, so an auditor reading a verdict must be able to see when the

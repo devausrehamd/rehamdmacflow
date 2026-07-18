@@ -229,6 +229,13 @@ export const rubricSchema = z.object({
         // A missing required input halts at the readiness gate; an optional one
         // is merely noted.
         required: z.boolean().default(true),
+        // Optional deterministic validity constraints, checked by the readiness
+        // gate when the input is present. Numbers: min/max; strings: pattern.
+        // These are what make the gate catch an out-of-range value, not just a
+        // missing one - all without an LLM.
+        min: z.number().optional(),
+        max: z.number().optional(),
+        pattern: z.string().optional(),
       }),
     )
     .default([]),

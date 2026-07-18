@@ -4,11 +4,12 @@
 //
 // The LLM judge returns one bit per criterion; THIS code turns those bits into
 // a score, a gate decision, and an approval outcome. The model never sees the
-// weights. Tested against the real export-control rubric and its real weights.
+// weights. Tested against an INLINE rubric fixture so the scoring logic is
+// exercised independently of which rubric files happen to be committed.
 //
 // Pure - no LLM, no DB. Usage: npm run smoke:scoring
 
-import { getRubric } from "../src/drafting/rubric-loader.js";
+import { rubricSchema } from "../src/drafting/rubric-schema.js";
 import { checkPatterns, scoreRubric, renderRubricResult, type CriterionVerdict } from "../src/drafting/scoring.js";
 
 const GREEN = "\x1b[0;32m"; const RED = "\x1b[0;31m"; const NC = "\x1b[0m";
@@ -21,13 +22,40 @@ function check(n: string, c: boolean, d = ""): void {
 const allPass = (ids: string[]): CriterionVerdict[] =>
   ids.map((id) => ({ id, verdict: "pass" as const, source: "llm_judge" as const, rationale: "" }));
 
+// An inline rubric exercising every scoring path: a critical + primary anti-
+// fabrication gate (deterministic patterns), weighted objective criteria, and a
+// minor criterion that lowers the score without failing the gate. Weights total
+// 100, and the critical weight (10) is small enough that failing it leaves the
+// score > 0.8 - so the test proves the GATE, not the score, blocks approval.
+const rubric = rubricSchema.parse({
+  documentType: "scoring-fixture",
+  displayName: "Scoring Fixture",
+  version: "1.0.0",
+  reviewThreshold: 0.8,
+  criteria: [
+    {
+      id: "no_fabricated_prior_state",
+      criterion: "PASS if no fabricated prior export-control state is asserted. FAIL otherwise.",
+      explanation: "Fabricating a prior classification (a claimed old ECCN, a dated review) is an auto-fail.",
+      weight: 10, primary: true, gate: "critical", assessmentType: "deterministic",
+      forbiddenPatterns: [
+        { pattern: "was EAR99", label: "prior EAR99 claim" },
+        { pattern: "prior 3A001", label: "prior ECCN claim" },
+        { pattern: "\\d{4}-\\d{2} CDR", label: "dated CDR reference" },
+      ],
+    },
+    { id: "atlas_rollup_ear99", criterion: "PASS if the Atlas roll-up classifies to EAR99 on function. FAIL otherwise.", weight: 30, primary: true, gate: "major" },
+    { id: "classification_justified", criterion: "PASS if the classification is justified against the ECCN text. FAIL otherwise.", weight: 30, gate: "major" },
+    { id: "reviewer_noted", criterion: "PASS if a reviewer note is present. FAIL otherwise.", weight: 20, gate: "minor" },
+    { id: "format_ok", criterion: "PASS if the document follows the required section format. FAIL otherwise.", weight: 10, gate: "major" },
+  ],
+});
+
 function main(): void {
   console.log("=== Rubric scoring smoke test ===\n");
 
-  const { rubric } = getRubric("export-control");
-  check("export-control loads with unified criteria", rubric.criteria.length === 9, String(rubric.criteria.length));
-  check("three criteria are critical gates",
-    rubric.criteria.filter((c) => c.gate === "critical").length === 3);
+  check("fixture loads with five criteria", rubric.criteria.length === 5, String(rubric.criteria.length));
+  check("one criterion is a critical gate", rubric.criteria.filter((c) => c.gate === "critical").length === 1);
 
   // --- Pattern pre-check: the anti-fabrication criterion ---
   const antiFab = rubric.criteria.find((c) => c.id === "no_fabricated_prior_state")!;
@@ -71,7 +99,6 @@ function main(): void {
   console.log(renderRubricResult(rubric, scoreRubric(rubric, critFail)));
   console.log("---\n");
 
-  console.log("");
   if (failed === 0) console.log(`${GREEN}Scoring is sound.${NC}`);
   else console.log(`${RED}${failed} check(s) failed.${NC}`);
   process.exit(failed === 0 ? 0 : 1);

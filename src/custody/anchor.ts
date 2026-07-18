@@ -15,7 +15,7 @@
 // The others are seams: the proof column takes any token, and verification is
 // a matter of checking the proof against the head it attests to.
 
-import { createSign, createVerify } from "node:crypto";
+import { sign as cryptoSign, verify as cryptoVerify } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { custody_events, custody_anchors } from "../db/schema.js";
@@ -43,10 +43,12 @@ export async function anchorHead(privateKeyPem: string): Promise<{
   if (headRows.length === 0) return null;
   const { seq, entry_hash } = headRows[0];
 
-  const signer = createSign("SHA256");
-  signer.update(`${domain}:${seq}:${entry_hash}`);
-  signer.end();
-  const proof = signer.sign(privateKeyPem, "base64");
+  // One-shot sign with a null algorithm: this is the API that works for modern
+  // EdDSA (Ed25519) keys, whose signature scheme includes its own hashing and so
+  // rejects the streaming "prehash then sign" createSign path. The message is the
+  // head triple, exactly as verifyAnchorSignature reconstructs it.
+  const message = Buffer.from(`${domain}:${seq}:${entry_hash}`, "utf8");
+  const proof = cryptoSign(null, message, privateKeyPem).toString("base64");
 
   await db.insert(custody_anchors).values({
     domain,
@@ -67,11 +69,9 @@ export function verifyAnchorSignature(
   proof: string,
   publicKeyPem: string,
 ): boolean {
-  const verifier = createVerify("SHA256");
-  verifier.update(`${domain}:${headSeq}:${headHash}`);
-  verifier.end();
+  const message = Buffer.from(`${domain}:${headSeq}:${headHash}`, "utf8");
   try {
-    return verifier.verify(publicKeyPem, proof, "base64");
+    return cryptoVerify(null, message, publicKeyPem, Buffer.from(proof, "base64"));
   } catch {
     return false;
   }

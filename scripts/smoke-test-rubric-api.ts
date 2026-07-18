@@ -32,8 +32,8 @@ const validRubric = {
   aliases: ["test procedure", "tp"],
   reviewThreshold: 0.85,
   criteria: [
-    { id: "grounded", criterion: "PASS if grounded.", explanation: "", weight: 60, primary: true, assessmentType: "llm_judge", gate: "critical", scope: "all_output" },
-    { id: "complete", criterion: "PASS if complete.", explanation: "", weight: 40, primary: false, assessmentType: "llm_judge", gate: "minor", scope: "all_output" },
+    { id: "grounded", criterion: "PASS if grounded. FAIL otherwise.", explanation: "", weight: 60, primary: true, assessmentType: "llm_judge", gate: "critical", scope: "all_output" },
+    { id: "complete", criterion: "PASS if complete. FAIL otherwise.", explanation: "", weight: 40, primary: false, assessmentType: "llm_judge", gate: "minor", scope: "all_output" },
   ],
 };
 

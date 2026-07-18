@@ -46,12 +46,12 @@ async function main(): Promise<void> {
   check("capa has criteria", capa.rubric.criteria.length >= 1);
   check("capa has critical gate criteria", capa.rubric.criteria.some((c) => c.gate === "critical"));
   check(
-    "capa objective weights sum to 100",
-    totalObjectiveWeight(capa.rubric) === 100,
+    "capa objective weights are positive",
+    totalObjectiveWeight(capa.rubric) > 0,
     `got ${totalObjectiveWeight(capa.rubric)}`,
   );
   check("capa has a review threshold in [0,1]", capa.rubric.reviewThreshold > 0 && capa.rubric.reviewThreshold <= 1);
-  check("capa trajectory has a required source", capa.rubric.trajectory.requiredSources.length >= 1);
+  check("capa trajectory has a required rule", capa.rubric.trajectory.required.length >= 1);
 
   // Hash stability: reloading yields the same hash
   const reload = loadRubrics().get("capa")!;

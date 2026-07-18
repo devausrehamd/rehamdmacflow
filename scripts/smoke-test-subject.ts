@@ -17,7 +17,7 @@
 // Usage: npm run smoke:subject
 
 import { randomUUID } from "node:crypto";
-import { inArray } from "drizzle-orm";
+import { inArray, eq } from "drizzle-orm";
 import { db, closeDb } from "../src/db/client.js";
 import { table_registry } from "../src/db/schema.js";
 import {
@@ -118,7 +118,16 @@ async function main(): Promise<void> {
     status: "active",
   };
 
+  // Isolate from any real risk-register rows already registered by corpus
+  // ingestion - they would otherwise inflate the enumeration counts below.
+  // Snapshot, remove, and restore in the finally, so this test neither counts
+  // nor destroys real data.
+  let preexisting: (typeof table_registry.$inferSelect)[] = [];
+
   try {
+    preexisting = await db.select().from(table_registry).where(eq(table_registry.collection, "risk-register"));
+    await db.delete(table_registry).where(eq(table_registry.collection, "risk-register"));
+
     await db.insert(table_registry).values([
       // conforming, internal, Summit
       { ...base, id: ids[0], source_path: "d/summit.xlsx", display_name: "Summit Risk Register",
@@ -190,6 +199,8 @@ async function main(): Promise<void> {
     console.log("     (did you run migrations? 0006_subject_and_collection)");
   } finally {
     await db.delete(table_registry).where(inArray(table_registry.id, ids)).catch(() => {});
+    // Restore the real risk-register rows we snapshotted out of the way.
+    if (preexisting.length) await db.insert(table_registry).values(preexisting).catch(() => {});
   }
 
   await closeDb();

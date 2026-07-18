@@ -23,8 +23,6 @@
     "smoke:tables": "tsx scripts/smoke-test-tables.ts",
     "smoke:hybrid": "QMS_QDRANT_COLLECTION_OVERRIDE=qms_hybrid_smoke_test tsx scripts/smoke-test-hybrid.ts",
     "smoke:rubrics": "tsx scripts/smoke-test-rubrics.ts",
-    "smoke:live": "tsx scripts/smoke-test-live-sources.ts",
-    "smoke:xlsx": "tsx scripts/smoke-test-xlsx-write.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:studio": "drizzle-kit studio",

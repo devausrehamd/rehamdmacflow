@@ -23,8 +23,6 @@ import { db, pool, closeDb } from "../src/db/client.js";
 import { table_registry, users } from "../src/db/schema.js";
 import { loadTable, physicalTableName, type ExtractedTable } from "../src/data/table-loader.js";
 import { createServer } from "../src/api/server.js";
-import { hashPassword } from "../src/api/auth/passwords.js";
-import { createUser } from "../src/api/auth/store.js";
 import { buildContext } from "../src/context.js";
 import { QueryRecord } from "../src/queries.js";
 import { agent } from "../src/agent/graph.js";
@@ -33,11 +31,14 @@ import { QdrantWriter } from "../src/ingestion/qdrant-writer.js";
 import { config } from "../src/config.js";
 import { buildTraceConfig, flushLangfuse } from "../src/observability/langfuse.js";
 import type { Server } from "node:http";
+import { idServerLogin } from "./_login.js";
 
 const GREEN = "\x1b[0;32m";
 const RED = "\x1b[0;31m";
 const NC = "\x1b[0m";
 
+const LOGIN_USER = process.env.QMS_SMOKE_USER ?? "dmaher";
+const LOGIN_PASS = process.env.QMS_SMOKE_PASSWORD ?? "thisisatest";
 const TEST_PORT = 4999;
 let failed = 0;
 
@@ -132,24 +133,11 @@ async function main(): Promise<void> {
       });
     });
 
-    // 3. Create a user and log in
-    await step("Setup: create user + log in", async () => {
-      const hash = await hashPassword("hybrid-test-password-12345");
-      const user = await createUser({
-        email: testEmail,
-        password_hash: hash,
-        role: "admin",
-        display_name: "Hybrid Test User",
-      });
-      userId = user.id;
-
-      const res = await fetch(`http://localhost:${TEST_PORT}/api/v1/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: testEmail, password: "hybrid-test-password-12345" }),
-      });
-      const body = (await res.json()) as { accessToken: string };
-      accessToken = body.accessToken;
+    // 3. Log into the ID Server (the stack's auth server) as an engineering
+    //    user. The Agent trusts the token and resolves entitlements from the ID
+    //    Server, so the SQL path runs against real, granted access.
+    await step(`Setup: log in as '${LOGIN_USER}'`, async () => {
+      accessToken = await idServerLogin(LOGIN_USER, LOGIN_PASS);
       if (!accessToken) throw new Error("no access token from login");
     });
 
@@ -157,7 +145,7 @@ async function main(): Promise<void> {
     let finalAnswer = "";
     let sqlQueryCount = 0;
     await step("Agent: run with a count question", async () => {
-      const ctx = buildContext({ id: userId!, email: testEmail, role: "admin" });
+      const ctx = buildContext({ id: LOGIN_USER, email: `${LOGIN_USER}@rehamd.local`, role: "admin" });
       const query = await QueryRecord.create(ctx, {
         kind: "ask",
         question: "How many open risks does A. Singh own?",

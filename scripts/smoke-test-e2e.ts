@@ -21,9 +21,8 @@
 
 import type { Server } from "node:http";
 import { createServer } from "../src/api/server.js";
-import { hashPassword } from "../src/api/auth/passwords.js";
-import { createUser } from "../src/api/auth/store.js";
 import { users } from "../src/db/schema.js";
+import { idServerLogin } from "./_login.js";
 import { db, closeDb } from "../src/db/client.js";
 import { sql } from "drizzle-orm";
 import { QdrantWriter } from "../src/ingestion/qdrant-writer.js";
@@ -42,8 +41,8 @@ function check(name: string, cond: boolean, detail = ""): void {
 
 const TEST_PORT = 4113;
 const COLLECTION = "qms_custody_e2e";
-const testEmail = `custody-e2e-${Date.now()}@qms-agent.test`;
-const password = "custody-e2e-password-12345";
+const LOGIN_USER = process.env.QMS_SMOKE_USER ?? "dmaher";
+const LOGIN_PASS = process.env.QMS_SMOKE_PASSWORD ?? "thisisatest";
 
 let server: Server | null = null;
 let userId: string | null = null;
@@ -115,24 +114,14 @@ async function main(): Promise<void> {
     });
     check("fixture: table + blurb written", Boolean(loaded.tableId));
 
-    // --- Server + user ---
+    // --- Server + login ---
     const app = createServer();
     await new Promise<void>((resolve) => { server = app.listen(TEST_PORT, () => resolve()); });
 
-    const user = await createUser({
-      email: testEmail,
-      password_hash: await hashPassword(password),
-      role: "admin",
-      display_name: "Custody E2E",
-    });
-    userId = user.id;
-
-    const login = await fetch(`http://localhost:${TEST_PORT}/api/v1/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: testEmail, password }),
-    });
-    const { accessToken } = (await login.json()) as { accessToken: string };
+    // Log into the ID Server (the stack's auth server) as an engineering user.
+    // The Agent runs in http identity mode: it trusts the ID Server's signature
+    // and resolves entitlements per request, so it needs no local user mirror.
+    const accessToken = await idServerLogin(LOGIN_USER, LOGIN_PASS);
     check("logged in", Boolean(accessToken));
 
     // --- 1. Ask over HTTP; capture correlation id ---

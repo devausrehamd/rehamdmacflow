@@ -21,6 +21,7 @@ import { agent } from "../src/agent/graph.js";
 import { closeDb } from "../src/db/client.js";
 import { closeAllServices } from "../src/services.js";
 import { buildTraceConfig, flushLangfuse } from "../src/observability/langfuse.js";
+import { idServerLogin, IDSERVER_URL } from "./_login.js";
 
 const GREEN = "\x1b[0;32m";
 const YELLOW = "\x1b[1;33m";
@@ -28,28 +29,10 @@ const RED = "\x1b[0;31m";
 const NC = "\x1b[0m";
 
 // The stack's auth server is the ID Server; the Agent trusts the tokens it signs
-// (shared JWT secret) and resolves entitlements from it. Log in there to get the
-// same bearer token an HTTP /ask request would carry.
-const IDSERVER_URL = process.env.QMS_IDENTITY_URL ?? "http://localhost:3001";
+// and resolves entitlements from it. Log in there to get the same bearer token
+// an HTTP /ask request would carry. Overridable for a different subject.
 const LOGIN_USER = process.env.QMS_SMOKE_USER ?? "dmaher";
 const LOGIN_PASS = process.env.QMS_SMOKE_PASSWORD ?? "thisisatest";
-
-async function login(): Promise<string> {
-  const res = await fetch(`${IDSERVER_URL}/v1/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ userId: LOGIN_USER, password: LOGIN_PASS }),
-  });
-  if (!res.ok) {
-    throw new Error(
-      `Login failed (${res.status}) at ${IDSERVER_URL}/v1/login as '${LOGIN_USER}'. ` +
-        `Is the ID Server running (./stack.sh start idserver) and is '${LOGIN_USER}' in its directory?`,
-    );
-  }
-  const body = (await res.json()) as { token?: string };
-  if (!body.token) throw new Error("ID Server login returned no token.");
-  return body.token;
-}
 
 async function main(): Promise<void> {
   const question =
@@ -62,7 +45,7 @@ async function main(): Promise<void> {
   const ctx = buildSystemContext();
 
   console.log(`Logging in as '${LOGIN_USER}' at ${IDSERVER_URL} ...`);
-  const authToken = await login();
+  const authToken = await idServerLogin(LOGIN_USER, LOGIN_PASS);
   console.log("  got bearer token\n");
 
   console.log("Creating QueryRecord...");

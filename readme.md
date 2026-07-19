@@ -115,17 +115,20 @@ of one behaviour; reading them is the fastest way to learn the system.
 
 ### Integration tests — a live, entitled, LLM-backed stack
 
-These are **not** part of the fast smoke suite: each drives the full agent through
-many real Ollama calls (minutes, not seconds) and needs an authenticated context
-whose subject carries the engineering-domain entitlements the agent's SQL path
-requires. Run them deliberately against a running stack, not in the inner loop.
+These are **not** part of the fast smoke suite: most drive the full agent through
+many real Ollama calls (minutes, not seconds). They **log into the ID Server**
+(the stack's auth server) as `dmaher` / `thisisatest` — an engineering-entitled
+user — so the agent's SQL path runs against real, granted access. Credentials and
+URL are overridable via `QMS_SMOKE_USER` / `QMS_SMOKE_PASSWORD` / `QMS_IDENTITY_URL`.
+**Needs the ID Server running** (`./stack.sh start idserver`).
 
 | Command | Exercises |
 |---------|-----------|
+| `npm run integration:denied` | **Fail case:** `reviewer1` logs in but is correctly DENIED the quality domain and `engineering:restricted` (fails closed). Fast, deterministic — no LLM. |
 | `npm run integration:agent` | The agent graph end-to-end (understand → retrieve → SQL → draft → reconcile) |
 | `npm run integration:hybrid` | Hybrid retrieval — the agent querying SQL *and* vectors for a count |
 | `npm run integration:custody-e2e` | Custody over **real HTTP**: ask → correlation id → dossier export |
-| `npm run integration` | All three, in sequence |
+| `npm run integration` | All of the above, in sequence |
 
 ## Other tasks
 

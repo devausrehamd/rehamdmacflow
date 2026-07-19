@@ -24,6 +24,8 @@ import { table_registry, users } from "../src/db/schema.js";
 import { loadTable, physicalTableName, type ExtractedTable } from "../src/data/table-loader.js";
 import { createServer } from "../src/api/server.js";
 import { buildContext } from "../src/context.js";
+import { getEntitlementProvider } from "../src/identity/index.js";
+import { newRunId } from "../src/custody/correlation.js";
 import { QueryRecord } from "../src/queries.js";
 import { agent } from "../src/agent/graph.js";
 import { getTierServices, closeAllServices } from "../src/services.js";
@@ -60,6 +62,13 @@ const sampleTable: ExtractedTable = {
   tableIndex: 0,
   displayName: "Hybrid Test Risk Register",
   tier: "operations",
+  // Register with real access labels + a collection so the entitlement-checked
+  // data API grants access to an engineering user (dmaher has engineering:internal)
+  // and the table is a proper, scoped member — mirroring the ingested corpus.
+  accessLabels: ["engineering:internal"],
+  project: "summit",
+  projectDisplayName: "Project Summit",
+  collection: "risk-register",
   headers: ["Risk ID", "Title", "Owner", "Status", "Score"],
   rows: [
     ["R-001", "Database failover gap", "A. Singh", "Open", "20"],
@@ -112,6 +121,9 @@ async function main(): Promise<void> {
         sourceSha: sampleTable.sourceSha256,
         displayName: loaded.displayName,
         tier: "operations",
+        accessLabels: ["engineering:internal"],
+        project: "summit",
+        collection: "risk-register",
       });
 
       let count = 0;
@@ -145,7 +157,16 @@ async function main(): Promise<void> {
     let finalAnswer = "";
     let sqlQueryCount = 0;
     await step("Agent: run with a count question", async () => {
-      const ctx = buildContext({ id: LOGIN_USER, email: `${LOGIN_USER}@rehamd.local`, role: "admin" });
+      // Build a proper context: resolve the user's entitlement (labels) the same
+      // way the request middleware does, so downstream access filtering has the
+      // labels it reads. A one-arg buildContext left entitlement undefined and
+      // crashed the run with "Cannot read properties of undefined (reading 'labels')".
+      const ent = await getEntitlementProvider().resolve(LOGIN_USER, "engineering");
+      const ctx = buildContext(
+        { id: LOGIN_USER, email: `${LOGIN_USER}@rehamd.local`, role: "admin" },
+        { labels: ent.labels, decisionId: ent.decisionId, policyHash: ent.policyHash, domain: ent.domain },
+        { correlationId: `cor_${Date.now().toString(16).padStart(24, "0")}`, runId: newRunId() },
+      );
       const query = await QueryRecord.create(ctx, {
         kind: "ask",
         question: "How many open risks does A. Singh own?",

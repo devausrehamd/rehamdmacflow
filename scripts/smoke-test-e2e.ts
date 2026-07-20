@@ -40,6 +40,10 @@ function check(name: string, cond: boolean, detail = ""): void {
 }
 
 const TEST_PORT = 4113;
+// Point the graph's data clients (custody, trace, vector, SQL — all API-mediated
+// under decision 13) at THIS in-process server, so they run in the process that
+// holds this test's collection override rather than reaching out to :4000.
+process.env.QMS_API_INTERNAL_URL = `http://localhost:${TEST_PORT}`;
 const COLLECTION = "qms_custody_e2e";
 const LOGIN_USER = process.env.QMS_SMOKE_USER ?? "dmaher";
 const LOGIN_PASS = process.env.QMS_SMOKE_PASSWORD ?? "thisisatest";

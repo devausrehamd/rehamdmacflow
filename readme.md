@@ -91,6 +91,7 @@ of one behaviour; reading them is the fastest way to learn the system.
 | `npm run smoke:supervisor` | The Supervisor: ensure-running (reuse-or-launch), launch-once dedupe, and TTL idle-destroy (agent-platform Stage 4) |
 | `npm run smoke:talk-agent` | The Talk Agent's capability selection: question → research, "draft a CAPA" → draft:capa, below-threshold → clarify (agent-platform Stage 5) |
 | `npm run smoke:agent-db-free` | **The decision-13 guard:** walks the agent's runtime import graph and fails if it reaches any database/vector/cache client (Postgres, Qdrant, Redis) — the invariant R1–R4 established. Pure, no infra. |
+| `npm run smoke:citation` | The deterministic citation net: a placeholder citation (`[Insert relevant citation here]`) is replaced with the sources actually retrieved, while real `[Source N: …]` citations pass through untouched. Pure, no LLM. |
 | `npm run smoke:review` | The review contract's pure parts: human-edit provenance + renderer |
 | `npm run smoke:batch` | The k-sampling instrument, with a **mock** judge of controllable variance |
 | `npm run smoke:export` | The exporter: a pure document-model → markdown renderer, byte-golden and deterministic (custody-DAG Phase 6) |

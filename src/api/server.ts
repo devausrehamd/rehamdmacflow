@@ -39,6 +39,7 @@ import { requireAuth } from "./auth/middleware.js";
 import { askRouter } from "./routes/ask.js";
 import { dataRouter } from "./routes/data.js";
 import { dataAccessRouter } from "./routes/data-access.js";
+import { orchestratorRouter } from "./routes/orchestrator.js";
 import { custodyRouter } from "./routes/custody.js";
 import { reviewRouter } from "./routes/review.js";
 import { rubricsRouter } from "./routes/rubrics.js";
@@ -270,6 +271,7 @@ export function createServer() {
   app.use(askRouter);
   app.use(dataRouter);
   app.use(dataAccessRouter);
+  app.use(orchestratorRouter);
   app.use(custodyRouter);
   app.use(reviewRouter);
   app.use(rubricsRouter);

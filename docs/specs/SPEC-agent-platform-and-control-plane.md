@@ -187,8 +187,21 @@ before the fan-out is spent.
 
 ## 5. Agent lifecycle — creation & destruction
 
-**The process lifecycle and the data lifecycle are separate.** Terminating a
-research agent must not destroy its ingested state.
+An agent runs on its own VM or container, and that compute is **ephemeral**. Three
+lifetimes are distinct, and only one is retained:
+
+| Layer | Location | Lifetime |
+|---|---|---|
+| **Compute** — the VM / container | itself | destroyed on TTL idle, on completion, or on crash |
+| **Ingest cache** — indexed corpus (Qdrant vectors, Postgres tables) | the **shared data plane**, not the VM | a cache: kept warm, or discarded and re-ingested. Re-derivable from the pinned corpus + config. |
+| **Evidence** — trajectory, custody chain, result artifacts | **external stores** (§7) | retained per policy (references and hashes only — kilobytes per run) |
+
+Nothing of evidentiary value resides in the VM. Trajectory is written ahead to the
+DAG History endpoint as each step completes (§7), so the VM is safe to destroy at
+any point — on a graceful stop, or a hard crash mid-run. There is no requirement to
+retain the VM that produced a document; reproducibility comes from the pinned
+config commit, tagged rubric, versioned corpus, and content-addressed artifacts (a
+fresh VM replays them), not from preserving the original machine.
 
 States: `launching → configuring → ingesting → ready → (serving⇄idle) → draining → stopped`.
 
@@ -197,8 +210,9 @@ States: `launching → configuring → ingesting → ready → (serving⇄idle) 
 2. Launch the runtime with configuration and injected secrets (service token, JWT
    secret).
 3. The agent runs its ingestion pipeline **to `ready`** — idempotent and
-   incremental, re-ingesting only deltas by source-sha, and reusing persistent
-   state so that a relaunch is *warm* rather than a cold multi-minute re-ingest.
+   incremental, re-ingesting only deltas by source-sha, and reusing the **shared
+   ingest cache** (keyed by corpus version + config commit) so that a relaunch is
+   *warm* rather than a cold multi-minute re-ingest. The cache is not in the VM.
 4. Register with Discovery, advertising `ready`, capabilities, and `configCommit`.
 
 **Destruction:**
@@ -206,12 +220,13 @@ States: `launching → configuring → ingesting → ready → (serving⇄idle) 
   agent after a configurable idle **TTL** with no dispatched work, or on explicit
   request. It sends `SIGTERM`; the agent **drains** — completes in-flight work,
   flushes the trajectory tail, writes the terminal marker, deregisters from
-  Discovery — and exits. Ingested state persists.
+  Discovery — and exits. The VM is destroyed; the shared ingest cache and all
+  evidence are external and untouched.
 - **Crash / SIGKILL / OOM:** no graceful path. The Discovery lease **expires** and
   the agent is dropped from the live list. Reconciliation reads the DAG History:
   the last step with no terminal marker indicates termination mid-operation at step
-  N (§7). The Supervisor may relaunch; because ingestion state is persistent, the
-  relaunch is warm.
+  N (§7). The Supervisor may relaunch; because the ingest cache is in the shared
+  data plane, a fresh VM reuses it — the destroyed VM held nothing to recover.
 
 **Warm pool versus on-demand:** the common agents (QMS research, the thinker) are
 kept warm to avoid cold-start latency on the first `/ask`; rare agents are launched
@@ -387,8 +402,11 @@ referenced from a manifest's `pipeline` — no new agent code.
 4. The custody chain remains **single-writer** (orchestrator); trajectory is
    multi-writer, per-agent lane. Different guarantees, joined by the artifact hash.
 5. Config and rubrics are git, **immutable release tags**, pinned per run.
-6. The process lifecycle is distinct from the data lifecycle: destroying an agent
-   never destroys its ingested state; a relaunch is warm.
+6. Agent VMs/containers are **ephemeral** — destroyed on TTL idle, completion, or
+   crash. Nothing of evidentiary value lives in the VM: trajectory, custody, and
+   artifacts are written to external stores as work proceeds, so a document's VM is
+   never retained. The ingest cache lives in the shared data plane (re-derivable),
+   not the VM.
 7. Ingestion is a **registry of pure typed converters**; extension is a new
    converter plus configuration.
 8. The **Supervisor is a separate service**, distinct from Discovery (a distinct

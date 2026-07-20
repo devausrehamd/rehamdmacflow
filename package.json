@@ -1,6 +1,6 @@
 {
   "name": "qms-agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Local QMS document drafting agent built on LangGraph.js, Ollama, Qdrant, Redis, and Postgres",
   "type": "module",
   "engines": {

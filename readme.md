@@ -102,6 +102,7 @@ of one behaviour; reading them is the fastest way to learn the system.
 | `npm run smoke:tables` | The structured-data foundation (tables → SQL) end-to-end |
 | `npm run smoke:custody` | The custody ledger, end-to-end against Postgres |
 | `npm run smoke:custody-dag` | The provenance DAG: events reference artifacts by hash; tampering an artifact or an event's inputs is detected; single-writer (custody-DAG Phase 2) |
+| `npm run smoke:dag-history` | The DAG History store: write-ahead, idempotent per-agent trajectory; terminal marker; where-it-stopped + resume point (agent-platform Stage 3) |
 | `npm run smoke:readiness` | The readiness gate: a deterministic input-completeness check that halts before the thinker with named gaps (custody-DAG Phase 4) |
 | `npm run smoke:gather` | Capability dispatch + parallel gather: fan-out to providers, order-independent artifact ids, one gather_complete, single-writer (custody-DAG Phase 5) |
 | `npm run smoke:subject` | Project scoping and collection enumeration |

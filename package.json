@@ -56,7 +56,8 @@
     "api:debug": "QMS_MODE=debug API_PORT=4001 QMS_AGENT_ADDRESS=http://localhost:4001 npm run api",
     "smoke:manifest": "tsx scripts/smoke-test-manifest.ts",
     "integration:manifest": "tsx scripts/smoke-test-manifest-live.ts",
-    "integration:data-access": "tsx scripts/smoke-test-data-access-live.ts"
+    "integration:data-access": "tsx scripts/smoke-test-data-access-live.ts",
+    "smoke:dag-history": "tsx scripts/smoke-test-dag-history.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.1.48",

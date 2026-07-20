@@ -659,6 +659,40 @@ export const custody_artifacts = pgTable(
   }),
 );
 
+// The DAG History store: durable, write-ahead, per-agent trajectory (agent-
+// platform Stage 3). Distinct from the tamper-evident custody chain and from
+// agent_run_steps (which is ephemeral). Each agent writes its own lane; the
+// composite primary key (correlation_id, agent_guid, seq) makes appends
+// idempotent - a retried write is a no-op - so no two writers ever contend and a
+// per-agent seq needs no global coordination. This is what survives an agent VM
+// being destroyed.
+export const agent_trajectory = pgTable(
+  "agent_trajectory",
+  {
+    correlation_id: varchar("correlation_id", { length: 64 }).notNull(),
+    agent_guid: varchar("agent_guid", { length: 64 }).notNull(),
+    seq: integer("seq").notNull(),
+    capability: varchar("capability", { length: 64 }),
+    kind: varchar("kind", { length: 48 }).notNull(),
+    // References only - query shape, source path - never raw data.
+    input: jsonb("input"),
+    // The content hash this step produced, or null.
+    output_ref: varchar("output_ref", { length: 64 }),
+    status: varchar("status", { length: 16 }).notNull(), // ok | error
+    error: text("error"),
+    // Terminal marker (good or bad). Its absence next to an expired lease means
+    // the agent died mid-operation at the last recorded seq.
+    terminal: boolean("terminal").notNull().default(false),
+    outcome: varchar("outcome", { length: 16 }), // completed | failed | shutdown
+    reason: text("reason"),
+    recorded_at: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.correlation_id, t.agent_guid, t.seq] }),
+    correlationIdx: index("agent_trajectory_correlation_idx").on(t.correlation_id),
+  }),
+);
+
 // External anchors. The head entry_hash at a point in time, signed or
 // timestamped by something OFF this host. This is what turns "a log we keep"
 // into evidence: forging the chain now also requires forging a dated,

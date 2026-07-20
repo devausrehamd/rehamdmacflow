@@ -183,6 +183,10 @@ export async function executeRecipe(
   persist?: PersistConfig,
   onStep?: StepProgress,
   registry?: CapabilityRegistry,
+  // The caller's bearer token, threaded so each step's run-trace write reaches
+  // the Data Access API (decision 13). Omitted by stub smokes, which record no
+  // trace — exactly as before, when the direct write silently no-op'd with no DB.
+  authToken?: string,
 ): Promise<ExecutionResult> {
   const sectionIds = new Set(rubric.sections.map((s) => s.id));
   validateRecipe(steps, sectionIds, {
@@ -216,7 +220,7 @@ export async function executeRecipe(
     // whole bag: the bag grows unboundedly and each prior step's output is
     // already recorded, so logging it again would bloat the trace for no gain.
     const startedAt = Date.now();
-    const scope = { correlationId: custody.correlationId, runId: custody.runId, node: step.kind, userId: custody.userId };
+    const scope = { correlationId: custody.correlationId, runId: custody.runId, node: step.kind, userId: custody.userId, authToken };
     const record = (out: unknown, status: "ok" | "error", error?: string) =>
       recordRunStep({ ...scope, input: step, output: out, status, error, latencyMs: Date.now() - startedAt });
 

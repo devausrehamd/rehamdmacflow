@@ -137,6 +137,13 @@ askRouter.post(
         policyHash: req.ctx!.policyHash,
       };
 
+      // The caller's bearer token, threaded to both the draft executor and the
+      // ask graph so their run-trace / data writes reach the Data Access API as
+      // the user (decision 13). In-memory only; never written to the QueryRecord.
+      const bearerToken = req.headers.authorization?.startsWith("Bearer ")
+        ? req.headers.authorization.slice(7).trim()
+        : undefined;
+
       // First custody event: this agent began handling this request. Payload is
       // references only - the question is the user's own input, not retrieved
       // content, so it is recorded; no retrieved text ever enters the chain.
@@ -181,6 +188,8 @@ askRouter.post(
               node: ev.kind,
               summary: `step ${ev.index + 1}/${ev.total}`,
             }),
+          undefined,
+          bearerToken,
         );
 
         const r = result.rubricResult;
@@ -203,14 +212,10 @@ askRouter.post(
         return;
       }
 
-      // Stream the graph execution. The user's bearer token is threaded into
-      // the agent state so the SQL retrieval node can call the data API as the
-      // user (tier permissions enforced there). This token stays in-memory in
+      // Stream the graph execution. The user's bearer token (hoisted above) is
+      // threaded into the agent state so the SQL retrieval node can call the data
+      // API as the user (tier permissions enforced there). It stays in-memory in
       // the LangGraph state and is never written to the persisted QueryRecord.
-      const bearerToken = req.headers.authorization?.startsWith("Bearer ")
-        ? req.headers.authorization.slice(7).trim()
-        : undefined;
-
       const initialState = {
         queryId: query.id,
         ctx: req.ctx!,

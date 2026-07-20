@@ -90,6 +90,7 @@ of one behaviour; reading them is the fastest way to learn the system.
 | `npm run smoke:manifest` | The agent manifest: schema, boot-from-git-tag commit pin, manifest → Agent Card (agent-platform Stage 2) |
 | `npm run smoke:supervisor` | The Supervisor: ensure-running (reuse-or-launch), launch-once dedupe, and TTL idle-destroy (agent-platform Stage 4) |
 | `npm run smoke:talk-agent` | The Talk Agent's capability selection: question → research, "draft a CAPA" → draft:capa, below-threshold → clarify (agent-platform Stage 5) |
+| `npm run smoke:agent-db-free` | **The decision-13 guard:** walks the agent's runtime import graph and fails if it reaches any database/vector/cache client (Postgres, Qdrant, Redis) — the invariant R1–R4 established. Pure, no infra. |
 | `npm run smoke:review` | The review contract's pure parts: human-edit provenance + renderer |
 | `npm run smoke:batch` | The k-sampling instrument, with a **mock** judge of controllable variance |
 | `npm run smoke:export` | The exporter: a pure document-model → markdown renderer, byte-golden and deterministic (custody-DAG Phase 6) |
@@ -134,6 +135,7 @@ URL are overridable via `QMS_SMOKE_USER` / `QMS_SMOKE_PASSWORD` / `QMS_IDENTITY_
 | `npm run integration:custody-api` | **Custody behind the API** (decision-13 R1): a custody event is appended **through the API** (no DB client), reaches the ledger, chains, has its identity stamped from the token (not the body), and an unauthenticated append is rejected. Needs Postgres + ID Server, no LLM. |
 | `npm run integration:trace-api` | **Trace + DAG History behind the API** (decision-13 R2): run steps, LLM calls, and trajectory steps/terminal are written **through the API** (no DB client), reach their tables with a server-assigned seq and token-stamped identity, and every unauthenticated write is rejected. Needs Postgres + ID Server, no LLM. |
 | `npm run integration:vector-api` | **Vector retrieval behind the API** (decision-13 R3): a query is embedded and searched **through the API** (no Qdrant client), the table lane filters correctly, a tier the caller cannot access is rejected (403) from the token, and an unauthenticated search is rejected. Needs Qdrant + Ollama + ID Server + corpus. |
+| `npm run integration:query-record-api` | **Query records behind the API** (decision-13 R4): the per-request run state is written and read back **through the API** (no Redis client), an unknown id reads as null, and unauthenticated access is rejected. Needs Redis + ID Server, no LLM. |
 | `npm run integration:discovery-registry` | Capability resolution against a **live Discovery**: register fixtures, resolve, deregister (agent-platform Stage 1). Needs Discovery, no LLM. |
 | `npm run integration:manifest` | A manifest-derived Agent Card registers with a **live Discovery**, ready-vs-up visible (agent-platform Stage 2). Needs Discovery, no LLM. |
 | `npm run integration:orchestrator` | **The Talk Agent `/ask` end-to-end:** POST a question → it selects `research:qms` and orchestrates a real answer under the caller's access; unauthenticated → 401 (agent-platform Stage 5). The GUI drives this. |

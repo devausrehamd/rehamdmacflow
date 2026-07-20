@@ -16,7 +16,7 @@
 // malformed JSON) and degrade gracefully: a gate failure falls back to a
 // keyword heuristic; a planning failure skips that table (prose still answers).
 
-import { llm } from "../clients.js";
+import { llm } from "../llm-client.js";
 import type { ColumnSchema } from "../data/table-schema.js";
 import type { QueryRequest } from "../data/query-builder.js";
 import { extractJson } from "./parse.js";

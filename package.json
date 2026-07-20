@@ -45,7 +45,7 @@
     "integration:custody-e2e": "QMS_QDRANT_COLLECTION_OVERRIDE=qms_custody_e2e tsx scripts/smoke-test-e2e.ts",
     "integration:denied": "tsx scripts/smoke-test-denied.ts",
     "integration:discovery-registry": "tsx scripts/smoke-test-discovery-registry-live.ts",
-    "integration": "npm run integration:denied && npm run integration:data-access && npm run integration:custody-api && npm run integration:trace-api && npm run integration:vector-api && npm run integration:discovery-registry && npm run integration:manifest && npm run integration:orchestrator && npm run integration:agent && npm run integration:hybrid && npm run integration:custody-e2e",
+    "integration": "npm run integration:denied && npm run integration:data-access && npm run integration:custody-api && npm run integration:trace-api && npm run integration:vector-api && npm run integration:query-record-api && npm run integration:discovery-registry && npm run integration:manifest && npm run integration:orchestrator && npm run integration:agent && npm run integration:hybrid && npm run integration:custody-e2e",
     "smoke:section": "tsx scripts/smoke-test-section.ts",
     "smoke:scoring": "tsx scripts/smoke-test-scoring.ts",
     "smoke:executor": "tsx scripts/smoke-test-executor.ts",
@@ -63,7 +63,9 @@
     "integration:orchestrator": "tsx scripts/smoke-test-orchestrator-live.ts",
     "integration:custody-api": "tsx scripts/smoke-test-custody-api-live.ts",
     "integration:trace-api": "tsx scripts/smoke-test-trace-api-live.ts",
-    "integration:vector-api": "tsx scripts/smoke-test-vector-api-live.ts"
+    "integration:vector-api": "tsx scripts/smoke-test-vector-api-live.ts",
+    "smoke:agent-db-free": "tsx scripts/smoke-test-agent-db-free.ts",
+    "integration:query-record-api": "tsx scripts/smoke-test-query-record-api-live.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.1.48",

@@ -47,6 +47,9 @@ async function main(): Promise<void> {
   console.log(`Logging in as '${LOGIN_USER}' at ${IDSERVER_URL} ...`);
   const authToken = await idServerLogin(LOGIN_USER, LOGIN_PASS);
   console.log("  got bearer token\n");
+  // QueryRecord persists through the Data Access API now (decision 13); carry the
+  // caller's token on the context so its load/save can authenticate.
+  ctx.token = authToken ?? undefined;
 
   console.log("Creating QueryRecord...");
   const query = await QueryRecord.create(ctx, { kind: "ask", question });

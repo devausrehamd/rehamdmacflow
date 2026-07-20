@@ -18,7 +18,7 @@
 import { randomBytes } from "node:crypto";
 import type { RequestContext } from "./context.js";
 import type { DataTier } from "./tiers.js";
-import { getTierServices } from "./services.js";
+import { queryRecordClient } from "./data/query-record-client.js";
 
 export type QueryStatus =
   | "created"
@@ -138,12 +138,12 @@ export class QueryRecord {
     return record;
   }
 
-  /** Load an existing query record from Redis. Returns null if not found. */
+  /** Load an existing query record THROUGH the Data Access API (decision 13).
+   *  Returns null if not found. */
   static async load(ctx: RequestContext, id: string): Promise<QueryRecord | null> {
-    const { redis } = getTierServices(ctx.user.tier);
-    const raw = await redis.get(`qms:queries:${id}`);
-    if (!raw) return null;
-    const data = JSON.parse(raw) as QueryRecordData;
+    if (!ctx.token) throw new Error("QueryRecord.load requires a bearer token on the context (decision 13)");
+    const data = await queryRecordClient(ctx.token).get<QueryRecordData>(id);
+    if (!data) return null;
     return new QueryRecord(data, ctx);
   }
 
@@ -245,16 +245,11 @@ export class QueryRecord {
   }
 
   private async save(): Promise<void> {
-    const { redis } = getTierServices(this.ctx.user.tier);
+    if (!this.ctx.token) throw new Error("QueryRecord.save requires a bearer token on the context (decision 13)");
     const ttlSeconds = Math.max(
       60,
       Math.floor((new Date(this.data.expires_at).getTime() - Date.now()) / 1000),
     );
-    await redis.set(
-      `qms:queries:${this.data.id}`,
-      JSON.stringify(this.data),
-      "EX",
-      ttlSeconds,
-    );
+    await queryRecordClient(this.ctx.token).put(this.data.id, this.data, ttlSeconds);
   }
 }

@@ -13,7 +13,7 @@
 import { llm } from "../../llm-client.js";
 import { QueryRecord } from "../../queries.js";
 import type { AgentStateType } from "../state.js";
-import { buildReconciliationPrompt, repairCitation } from "../prompts.js";
+import { buildReconciliationPrompt, repairCitation, expandSourceCitations } from "../prompts.js";
 
 export async function reconcile(state: AgentStateType): Promise<Partial<AgentStateType>> {
   const { ctx, queryId, question, partialsByTier } = state;
@@ -29,16 +29,20 @@ export async function reconcile(state: AgentStateType): Promise<Partial<AgentSta
   const response = await llm.invoke(prompt);
   const latency = Date.now() - startTime;
 
-  // Deterministic net: if the model emitted a placeholder citation ("[Insert
-  // relevant citation here]") instead of a real one, replace it with the sources
-  // that were actually retrieved for this run - so even a "no data" answer cites
-  // what was reviewed rather than a template. Real "[Source N: …]" citations pass
-  // through untouched.
-  const sourcePaths = Object.values(queryRecord.toJSON().tiers)
-    .flatMap((t) => t.chunks ?? [])
-    .map((c) => c.source_path)
-    .filter((p): p is string => Boolean(p));
-  const finalAnswer = repairCitation(String(response.content), sourcePaths);
+  // Deterministic citation post-processing, so the reader always sees a real
+  // source with its file path:
+  //   1. repairCitation replaces a placeholder ("[Insert relevant citation here]")
+  //      with the sources actually retrieved — even a "no data" answer cites what
+  //      was reviewed rather than a template.
+  //   2. expandSourceCitations turns a bare "[Source 5]" into "[Source 5: path]"
+  //      so an opaque index becomes the actual file. The [Source N] numbering is
+  //      per-tier, so the index→path map is only unambiguous with a single tier.
+  const tierChunkLists = Object.values(queryRecord.toJSON().tiers).map((t) => t.chunks ?? []);
+  const sourcePaths = tierChunkLists.flat().map((c) => c.source_path).filter((p): p is string => Boolean(p));
+  const orderedSources = tierChunkLists.length === 1 ? tierChunkLists[0]!.map((c) => c.source_path) : [];
+
+  let finalAnswer = repairCitation(String(response.content), sourcePaths);
+  finalAnswer = expandSourceCitations(finalAnswer, orderedSources);
 
   // setFinalAnswer also marks the query as "complete"
   await queryRecord.setFinalAnswer(finalAnswer, latency);

@@ -64,6 +64,21 @@ export function repairCitation(answer: string, sourcePaths: string[]): string {
 }
 
 /**
+ * Expand a bare numbered citation — "[Source 5]" — into "[Source 5: the/actual/
+ * path]", so the reader sees the file rather than an opaque index. The model is
+ * shown "[Source N: path]" in its context but tends to cite just the number;
+ * this maps the number back to the path from the SAME ordered source list the
+ * prompt built (chunk i → Source i+1). A citation that already carries a path
+ * ("[Source 5: …]") is left untouched, and an out-of-range number is left as-is.
+ */
+export function expandSourceCitations(answer: string, orderedSourcePaths: (string | undefined)[]): string {
+  return answer.replace(/\[Source (\d+)\]/gi, (whole, n: string) => {
+    const path = orderedSourcePaths[Number(n) - 1];
+    return path ? `[Source ${n}: ${path}]` : whole;
+  });
+}
+
+/**
  * Rewrite a question for retrieval if needed.
  * v1: identity transform (pass through unchanged).
  * Future: HyDE pattern (generate hypothetical answer, embed that for retrieval),
@@ -114,8 +129,8 @@ QUESTION: ${question}
 Instructions:
 - If EXACT DATA is provided above, it IS the answer - state it directly and confidently. Never say information is unavailable when exact data is present.
 - Otherwise answer from the context, and only say information is missing if neither the context nor exact data covers it.
-- End with a "Citation:" line that names the REAL sources above by their bracketed labels, e.g. "Citation: [Source 2], [Source 5]". Cite the sources that support your answer; for a figure from EXACT DATA, cite the [Source N] of the table it came from.
-- A "no data" answer still cites what was searched: if the sources above do not contain the answer, list the sources you reviewed, e.g. "Citation: reviewed [Source 1], [Source 3]; none record an owner named 'Singh'."
+- End with a "Citation:" line that names the REAL sources above INCLUDING THEIR FILE PATH, copied from the bracketed label — e.g. "Citation: [Source 2: 05_Risk/Risk_Register_Summit.xlsx]". Always include the path shown after the source number; a bare "[Source 2]" is not enough for the reader. For a figure from EXACT DATA, cite the source of the table it came from.
+- A "no data" answer still cites what was searched: if the sources above do not contain the answer, list the sources you reviewed with their paths, e.g. "Citation: reviewed [Source 1: …], [Source 3: …]; none record an owner named 'Singh'."
 - NEVER write placeholder or template text such as "[Insert citation here]", "[relevant citation]", "[Source]", or an empty citation. Every citation must reference a real [Source N] shown above.
 - Be concise and direct. If the question asks "how many", give the number.`;
 }

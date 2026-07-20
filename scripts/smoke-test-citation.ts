@@ -10,7 +10,7 @@
 //
 // Usage: npm run smoke:citation
 
-import { hasPlaceholderCitation, repairCitation } from "../src/agent/prompts.js";
+import { hasPlaceholderCitation, repairCitation, expandSourceCitations } from "../src/agent/prompts.js";
 
 const GREEN = "\x1b[0;32m";
 const RED = "\x1b[0;31m";
@@ -65,6 +65,22 @@ function main(): void {
   // --- A real citation passes through repair unchanged ---
   const good = "There are 16 risks. Citation: [Source 1: risks.xlsx]";
   check("real citation passes through unchanged", repairCitation(good, SRC) === good);
+
+  // --- Bare numbered citations are expanded to the actual file path ---
+  const ordered = ["05_Risk/Risk_Register_Summit.xlsx", undefined, undefined, undefined, "06_Correspondence/Weekly_Tag_Up.docx"];
+  check(
+    "expands bare [Source N] to [Source N: path]",
+    expandSourceCitations("reviewed [Source 1], [Source 5]", ordered) ===
+      "reviewed [Source 1: 05_Risk/Risk_Register_Summit.xlsx], [Source 5: 06_Correspondence/Weekly_Tag_Up.docx]",
+  );
+  check(
+    "a citation that already has its path is left untouched",
+    expandSourceCitations("[Source 1: risks.xlsx]", ordered) === "[Source 1: risks.xlsx]",
+  );
+  check(
+    "an out-of-range source number is left as-is",
+    expandSourceCitations("[Source 9]", ordered) === "[Source 9]",
+  );
 
   console.log("");
   if (failed === 0) console.log(`${GREEN}Citation repair is sound.${NC}`);

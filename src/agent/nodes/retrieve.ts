@@ -22,7 +22,7 @@ import type { DataTier } from "../../tiers.js";
 import type { AgentStateType } from "../state.js";
 import { labelsIntersect } from "../../identity/classification.js";
 import { enforceLabels } from "../../identity/index.js";
-import { appendEvent } from "../../custody/ledger.js";
+import { custodyClient } from "../../data/custody-client.js";
 import { fuse, type RankedItem } from "../fusion.js";
 
 const PROSE_TOP_K = 6; // per-query search depth
@@ -66,13 +66,22 @@ function buildQueryStrings(state: AgentStateType): string[] {
 }
 
 export async function retrieve(state: AgentStateType): Promise<Partial<AgentStateType>> {
-  const { ctx, queryId } = state;
+  const { ctx, queryId, authToken } = state;
 
   const queryRecord = await QueryRecord.load(ctx, queryId);
   if (!queryRecord) {
     throw new Error(`QueryRecord ${queryId} not found in retrieve node`);
   }
   await queryRecord.setStatus("retrieving");
+
+  // Custody is recorded THROUGH the Data Access API (decision 13): the node holds
+  // an HTTP client + the caller's token, never a database client. Every real
+  // entry point (ask, orchestrator, the live smokes) threads authToken; if it is
+  // ever absent the grounding evidence is skipped rather than failing retrieval.
+  const custody = authToken ? custodyClient(authToken) : null;
+  if (!custody) {
+    console.warn("retrieve: no auth token in state; retrieval custody events will not be recorded");
+  }
 
   const queryStrings = buildQueryStrings(state);
   const vectors = await embedBatch(queryStrings);
@@ -187,7 +196,7 @@ export async function retrieve(state: AgentStateType): Promise<Partial<AgentStat
       // Custody: record WHAT was retrieved - chunk ids and labels, never text.
       // This is the grounding evidence: the export can later show every claim
       // traces to one of these ids. Emitted per tier; a rerun gets a new runId.
-      await appendEvent(
+      await custody?.append(
         {
           correlationId: ctx.correlationId,
           runId: ctx.runId,

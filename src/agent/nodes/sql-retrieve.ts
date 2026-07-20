@@ -26,7 +26,7 @@ import {
   type AvailableTable,
 } from "../sql-planner.js";
 import { getTable, queryTable, DataApiError } from "../../data/client.js";
-import { appendEvent } from "../../custody/ledger.js";
+import { custodyClient } from "../../data/custody-client.js";
 
 interface BlurbRef {
   tableId: string;
@@ -158,7 +158,9 @@ export async function sqlRetrieve(state: AgentStateType): Promise<Partial<AgentS
       // Custody: record the query SHAPE, the executed SQL, and the row count -
       // never the rows themselves (they may carry PII, and the chain is
       // immutable). This is the "did it query, and get what it claims" evidence.
-      await appendEvent(
+      // Recorded through the Data Access API (decision 13). authToken is
+      // guaranteed here: this node returns early above when it is absent.
+      await custodyClient(authToken).append(
         {
           correlationId: ctx.correlationId,
           runId: ctx.runId,

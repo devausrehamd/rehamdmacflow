@@ -131,6 +131,7 @@ URL are overridable via `QMS_SMOKE_USER` / `QMS_SMOKE_PASSWORD` / `QMS_IDENTITY_
 |---------|-----------|
 | `npm run integration:denied` | **Fail case:** `reviewer1` logs in but is correctly DENIED the quality domain and `engineering:restricted` (fails closed). Fast, deterministic — no LLM. |
 | `npm run integration:data-access` | The Data Access API: an artifact is written and read **through the API** (no DB client), the write reaches the DB, and an unauthenticated write is rejected (agent-platform Stage 0). Needs Postgres + ID Server, no LLM. |
+| `npm run integration:custody-api` | **Custody behind the API** (decision-13 R1): a custody event is appended **through the API** (no DB client), reaches the ledger, chains, has its identity stamped from the token (not the body), and an unauthenticated append is rejected. Needs Postgres + ID Server, no LLM. |
 | `npm run integration:discovery-registry` | Capability resolution against a **live Discovery**: register fixtures, resolve, deregister (agent-platform Stage 1). Needs Discovery, no LLM. |
 | `npm run integration:manifest` | A manifest-derived Agent Card registers with a **live Discovery**, ready-vs-up visible (agent-platform Stage 2). Needs Discovery, no LLM. |
 | `npm run integration:orchestrator` | **The Talk Agent `/ask` end-to-end:** POST a question → it selects `research:qms` and orchestrates a real answer under the caller's access; unauthenticated → 401 (agent-platform Stage 5). The GUI drives this. |

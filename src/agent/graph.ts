@@ -14,14 +14,29 @@
 // (no orphan nodes, no missing edges, etc.).
 
 import { StateGraph, START, END } from "@langchain/langgraph";
-import { AgentState } from "./state.js";
+import { AgentState, type AgentStateType } from "./state.js";
 import { instrument } from "./instrument.js";
 import { understand } from "./nodes/understand.js";
 import { retrieve } from "./nodes/retrieve.js";
 import { sqlRetrieve } from "./nodes/sql-retrieve.js";
 import { draftPartials } from "./nodes/draft.js";
+import { directAnswer } from "./nodes/direct-answer.js";
+import { groundingNotice } from "./nodes/grounding-notice.js";
 import { reconcile } from "./nodes/reconcile.js";
 import { finalize } from "./nodes/finalize.js";
+import { composeExactAnswer } from "./compose-exact.js";
+
+// After SQL retrieval, decide how to answer:
+//   - grounding: the planner decoded a term the schema does not define (an
+//     ungrounded filter). Call it out deterministically rather than guess.
+//   - direct: exact data already answers a quantitative question — compose it
+//     deterministically, no LLM.
+//   - draft: everything else — the LLM answer path (draft + reconcile).
+// Grounding takes priority: never answer around a term that could not be mapped.
+function routeAfterSql(state: AgentStateType): "grounding" | "direct" | "draft" {
+  if ((state.groundingIssues?.length ?? 0) > 0) return "grounding";
+  return composeExactAnswer(state.question, state.sqlResults, state.chunksByTier) !== null ? "direct" : "draft";
+}
 
 // Every node goes through `instrument`, which records what it was given and
 // what it returned into agent_run_steps.
@@ -36,12 +51,22 @@ const builder = new StateGraph(AgentState)
   .addNode("retrieve", instrument("retrieve", retrieve))
   .addNode("sql_retrieve", instrument("sql_retrieve", sqlRetrieve))
   .addNode("draft", instrument("draft", draftPartials))
+  .addNode("direct_answer", instrument("direct_answer", directAnswer))
+  .addNode("grounding_notice", instrument("grounding_notice", groundingNotice))
   .addNode("reconcile", instrument("reconcile", reconcile))
   .addNode("finalize", instrument("finalize", finalize))
   .addEdge(START, "understand")
   .addEdge("understand", "retrieve")
   .addEdge("retrieve", "sql_retrieve")
-  .addEdge("sql_retrieve", "draft")
+  // Grounding gate + exact-data short-circuit: call out an ungrounded term, or
+  // answer a known number deterministically, before falling to the LLM path.
+  .addConditionalEdges("sql_retrieve", routeAfterSql, {
+    grounding: "grounding_notice",
+    direct: "direct_answer",
+    draft: "draft",
+  })
+  .addEdge("grounding_notice", "finalize")
+  .addEdge("direct_answer", "finalize")
   .addEdge("draft", "reconcile")
   .addEdge("reconcile", "finalize")
   .addEdge("finalize", END);

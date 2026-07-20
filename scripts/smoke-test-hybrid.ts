@@ -166,6 +166,9 @@ async function main(): Promise<void> {
         { id: LOGIN_USER, email: `${LOGIN_USER}@rehamd.local`, role: "admin" },
         { labels: ent.labels, decisionId: ent.decisionId, policyHash: ent.policyHash, domain: ent.domain },
         { correlationId: `cor_${Date.now().toString(16).padStart(24, "0")}`, runId: newRunId() },
+        // QueryRecord persists through the Data Access API now (decision 13), so
+        // the context carries the caller's token.
+        accessToken!,
       );
       const query = await QueryRecord.create(ctx, {
         kind: "ask",

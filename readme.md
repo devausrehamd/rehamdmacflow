@@ -86,6 +86,16 @@ of one behaviour; reading them is the fastest way to learn the system.
 | `npm run smoke:rubrics` | The rubric loader and the draft/review schema foundation |
 | `npm run smoke:rubric-api` | The rubric API's validation core, headless (no server, no GUI) |
 | `npm run smoke:doctype-contract` | The DocumentType contract: requiredInputs, capability-typed steps, and the capability/format pre-flight (custody-DAG Phase 3) |
+| `npm run smoke:discovery-registry` | Discovery-backed capability resolution: capability → live agent, production preferred (agent-platform Stage 1) |
+| `npm run smoke:manifest` | The agent manifest: schema, boot-from-git-tag commit pin, manifest → Agent Card (agent-platform Stage 2) |
+| `npm run smoke:supervisor` | The Supervisor: ensure-running (reuse-or-launch), launch-once dedupe, and TTL idle-destroy (agent-platform Stage 4) |
+| `npm run smoke:talk-agent` | The Talk Agent's capability selection: question → research, "draft a CAPA" → draft:capa, below-threshold → clarify (agent-platform Stage 5) |
+| `npm run smoke:agent-db-free` | **The decision-13 guard:** walks the agent's runtime import graph and fails if it reaches any database/vector/cache client (Postgres, Qdrant, Redis) — the invariant R1–R4 established. Pure, no infra. |
+| `npm run smoke:citation` | The deterministic citation net: a placeholder citation (`[Insert relevant citation here]`) is replaced with the sources actually retrieved, while real `[Source N: …]` citations pass through untouched. Pure, no LLM. |
+| `npm run smoke:direct-answer` | The exact-data short-circuit: a quantitative question whose SQL result is a scalar aggregate is answered **deterministically, with no LLM** — a single count, or a multi-table cross-reference with a per-source breakdown and combined total. Gating and fall-back-to-LLM covered. Pure, no LLM. |
+| `npm run smoke:grounding` | The **grounding gate**: a planned query is validated against the schema before execution — a filter whose value falls outside its column's domain (`likelihood = 5` when likelihood is 1–4) is a decode failure and is **called out, not executed**, while an in-domain-but-empty filter passes. Pure, no LLM. |
+| `npm run smoke:derivations` | The **derivation registry** (`derivations/`): the QMS defines interpretive terms (`critical` → `score ≥ 16`); the definition is injected into the planner so the term is **decoded, not guessed**. Resolution (term/alias, column presence, table scope) and prompt injection are covered. Pure, no LLM. |
+| `npm run smoke:abstain` | The **decoder abstain contract**: the planner returns `{query, unresolved}` and self-declares an interpretive term it can't map to a value or a defined term, so the system **calls it out instead of guessing**. The parser stays tolerant of a bare query so the common case never regresses. Pure, no LLM. |
 | `npm run smoke:review` | The review contract's pure parts: human-edit provenance + renderer |
 | `npm run smoke:batch` | The k-sampling instrument, with a **mock** judge of controllable variance |
 | `npm run smoke:export` | The exporter: a pure document-model → markdown renderer, byte-golden and deterministic (custody-DAG Phase 6) |
@@ -100,6 +110,7 @@ of one behaviour; reading them is the fastest way to learn the system.
 | `npm run smoke:tables` | The structured-data foundation (tables → SQL) end-to-end |
 | `npm run smoke:custody` | The custody ledger, end-to-end against Postgres |
 | `npm run smoke:custody-dag` | The provenance DAG: events reference artifacts by hash; tampering an artifact or an event's inputs is detected; single-writer (custody-DAG Phase 2) |
+| `npm run smoke:dag-history` | The DAG History store: write-ahead, idempotent per-agent trajectory; terminal marker; where-it-stopped + resume point (agent-platform Stage 3) |
 | `npm run smoke:readiness` | The readiness gate: a deterministic input-completeness check that halts before the thinker with named gaps (custody-DAG Phase 4) |
 | `npm run smoke:gather` | Capability dispatch + parallel gather: fan-out to providers, order-independent artifact ids, one gather_complete, single-writer (custody-DAG Phase 5) |
 | `npm run smoke:subject` | Project scoping and collection enumeration |
@@ -125,6 +136,14 @@ URL are overridable via `QMS_SMOKE_USER` / `QMS_SMOKE_PASSWORD` / `QMS_IDENTITY_
 | Command | Exercises |
 |---------|-----------|
 | `npm run integration:denied` | **Fail case:** `reviewer1` logs in but is correctly DENIED the quality domain and `engineering:restricted` (fails closed). Fast, deterministic — no LLM. |
+| `npm run integration:data-access` | The Data Access API: an artifact is written and read **through the API** (no DB client), the write reaches the DB, and an unauthenticated write is rejected (agent-platform Stage 0). Needs Postgres + ID Server, no LLM. |
+| `npm run integration:custody-api` | **Custody behind the API** (decision-13 R1): a custody event is appended **through the API** (no DB client), reaches the ledger, chains, has its identity stamped from the token (not the body), and an unauthenticated append is rejected. Needs Postgres + ID Server, no LLM. |
+| `npm run integration:trace-api` | **Trace + DAG History behind the API** (decision-13 R2): run steps, LLM calls, and trajectory steps/terminal are written **through the API** (no DB client), reach their tables with a server-assigned seq and token-stamped identity, and every unauthenticated write is rejected. Needs Postgres + ID Server, no LLM. |
+| `npm run integration:vector-api` | **Vector retrieval behind the API** (decision-13 R3): a query is embedded and searched **through the API** (no Qdrant client), the table lane filters correctly, a tier the caller cannot access is rejected (403) from the token, and an unauthenticated search is rejected. Needs Qdrant + Ollama + ID Server + corpus. |
+| `npm run integration:query-record-api` | **Query records behind the API** (decision-13 R4): the per-request run state is written and read back **through the API** (no Redis client), an unknown id reads as null, and unauthenticated access is rejected. Needs Redis + ID Server, no LLM. |
+| `npm run integration:discovery-registry` | Capability resolution against a **live Discovery**: register fixtures, resolve, deregister (agent-platform Stage 1). Needs Discovery, no LLM. |
+| `npm run integration:manifest` | A manifest-derived Agent Card registers with a **live Discovery**, ready-vs-up visible (agent-platform Stage 2). Needs Discovery, no LLM. |
+| `npm run integration:orchestrator` | **The Talk Agent `/ask` end-to-end:** POST a question → it selects `research:qms` and orchestrates a real answer under the caller's access; unauthenticated → 401 (agent-platform Stage 5). The GUI drives this. |
 | `npm run integration:agent` | The agent graph end-to-end (understand → retrieve → SQL → draft → reconcile) |
 | `npm run integration:hybrid` | Hybrid retrieval — the agent querying SQL *and* vectors for a count |
 | `npm run integration:custody-e2e` | Custody over **real HTTP**: ask → correlation id → dossier export |

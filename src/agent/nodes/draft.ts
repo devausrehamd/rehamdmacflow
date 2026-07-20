@@ -8,7 +8,7 @@
 // so the model cannot accidentally conflate sources from different domains.
 // For v1 with one tier, this produces one partial.
 
-import { llm } from "../../clients.js";
+import { llm } from "../../llm-client.js";
 import { QueryRecord } from "../../queries.js";
 import type { DataTier } from "../../tiers.js";
 import type { AgentStateType } from "../state.js";

@@ -26,7 +26,9 @@ import {
   type AvailableTable,
 } from "../sql-planner.js";
 import { getTable, queryTable, DataApiError } from "../../data/client.js";
-import { appendEvent } from "../../custody/ledger.js";
+import { custodyClient } from "../../data/custody-client.js";
+import { checkGrounding, fieldSummary, type GroundingIssue } from "../grounding.js";
+import { applicableDerivations, derivationsForTable } from "../derivations.js";
 
 interface BlurbRef {
   tableId: string;
@@ -104,33 +106,83 @@ export async function sqlRetrieve(state: AgentStateType): Promise<Partial<AgentS
     return {};
   }
 
-  // --- For each selected table: plan -> execute -> retry once ---
+  // --- For each selected table: plan -> ground -> execute -> retry once ---
   const sqlResults: Record<string, SqlResult> = {};
+  const groundingIssues: GroundingIssue[] = [];
 
   for (const tableId of gate.tableIds) {
     try {
       // Fetch the authoritative schema from the data API
       const detail = await getTable(authToken, tableId);
 
+      // QMS-defined terms for this table ("critical" -> score >= 16). Injected
+      // into the planner so an interpretive term is decoded from its definition
+      // instead of guessed; anything still undefined is caught by the gate below.
+      const definitions = applicableDerivations(question, detail.display_name, detail.columns);
+      if (definitions.length > 0) {
+        console.log(`[sql-retrieve] applying ${definitions.length} defined term(s): ${definitions.map((d) => d.term).join(", ")}`);
+      }
+
       // Plan the query
-      let queryReq = await planQuery(question, detail.columns);
+      const plan = await planQuery(question, detail.columns, definitions);
+      let queryReq = plan.query;
       console.log(`[sql-retrieve] planned query for ${tableId}: ${JSON.stringify(queryReq)}`);
+
+      // The decoder abstained on an interpretive term it could not map to a
+      // column value or a defined term (increment 3). Its query omits that term,
+      // so executing it would silently drop the user's intent — call it out
+      // instead, and suggest the terms the QMS does define.
+      if (plan.unresolved.length > 0) {
+        console.log(`[sql-retrieve] unresolved term(s) for ${tableId}: ${plan.unresolved.map((u) => u.term).join(", ")}`);
+        groundingIssues.push({
+          tableId,
+          displayName: detail.display_name,
+          ungrounded: [],
+          unresolvedTerms: plan.unresolved,
+          availableFields: fieldSummary(detail.columns),
+          definedTerms: derivationsForTable(detail.display_name, detail.columns).map((d) => d.term),
+        });
+        continue;
+      }
+
+      // Grounding gate: a filter whose value falls outside its column's domain is
+      // a decode failure ("likelihood = 5" when likelihood is 1–4), not a "0
+      // results" answer. Refuse to execute it — the graph calls it out rather than
+      // guess. Re-checked after any corrective replan below.
+      let grounding = checkGrounding(queryReq, detail.columns);
 
       // Execute, with one corrective retry on validation error
       let result;
-      try {
-        result = await queryTable(authToken, tableId, queryReq);
-      } catch (err) {
-        if (err instanceof DataApiError && err.status === 400) {
-          console.log(`[sql-retrieve] query rejected (${err.message}), replanning...`);
-          // Replan with the error, try once more
-          queryReq = await planQuery(question, detail.columns, err.message);
-          console.log(`[sql-retrieve] replanned query: ${JSON.stringify(queryReq)}`);
+      if (grounding.grounded) {
+        try {
           result = await queryTable(authToken, tableId, queryReq);
-        } else {
-          throw err;
+        } catch (err) {
+          if (err instanceof DataApiError && err.status === 400) {
+            console.log(`[sql-retrieve] query rejected (${err.message}), replanning...`);
+            // Replan with the error, try once more
+            queryReq = (await planQuery(question, detail.columns, definitions, err.message)).query;
+            console.log(`[sql-retrieve] replanned query: ${JSON.stringify(queryReq)}`);
+            grounding = checkGrounding(queryReq, detail.columns);
+            if (grounding.grounded) result = await queryTable(authToken, tableId, queryReq);
+          } else {
+            throw err;
+          }
         }
       }
+
+      // Ungrounded: record the decode failure and move on — the graph will answer
+      // by calling it out rather than reporting a misleading count.
+      if (!grounding.grounded) {
+        console.log(`[sql-retrieve] ungrounded query for ${tableId}: ${JSON.stringify(grounding.ungrounded)}`);
+        groundingIssues.push({
+          tableId,
+          displayName: detail.display_name,
+          ungrounded: grounding.ungrounded,
+          availableFields: fieldSummary(detail.columns),
+        });
+        continue;
+      }
+      if (!result) continue; // grounded but produced no result (defensive)
 
       sqlResults[tableId] = {
         tableId,
@@ -158,7 +210,9 @@ export async function sqlRetrieve(state: AgentStateType): Promise<Partial<AgentS
       // Custody: record the query SHAPE, the executed SQL, and the row count -
       // never the rows themselves (they may carry PII, and the chain is
       // immutable). This is the "did it query, and get what it claims" evidence.
-      await appendEvent(
+      // Recorded through the Data Access API (decision 13). authToken is
+      // guaranteed here: this node returns early above when it is absent.
+      await custodyClient(authToken).append(
         {
           correlationId: ctx.correlationId,
           runId: ctx.runId,
@@ -182,5 +236,5 @@ export async function sqlRetrieve(state: AgentStateType): Promise<Partial<AgentS
     }
   }
 
-  return { sqlResults };
+  return { sqlResults, groundingIssues };
 }

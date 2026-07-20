@@ -16,10 +16,11 @@
 // malformed JSON) and degrade gracefully: a gate failure falls back to a
 // keyword heuristic; a planning failure skips that table (prose still answers).
 
-import { llm } from "../clients.js";
+import { llm } from "../llm-client.js";
 import type { ColumnSchema } from "../data/table-schema.js";
 import type { QueryRequest } from "../data/query-builder.js";
 import { extractJson } from "./parse.js";
+import { definitionsBlock, type Derivation } from "./derivations.js";
 
 // ---- The gate ----
 
@@ -123,37 +124,88 @@ CRITICAL RULES:
 - For sum/avg/min/max, set "column" to a numeric column.
 - Use ONLY column names that exist in the schema. Use exact string values as they appear in the samples.
 
+INTERPRETIVE TERMS — RESOLVE OR ABSTAIN:
+A qualitative judgment word — a severity, priority, size, importance, or recency term such as "critical", "major", "minor", "trivial", "severe", "urgent", "recent" — is NOT a column value. Only put it in a filter if it is listed under "Defined terms" above, or is an explicit value/threshold on a column in the schema. If it is neither, DO NOT invent a filter for it: leave it out of the query and list it under "unresolved". Guessing a filter for an undefined judgment word is WRONG; abstaining is correct.
+
+OUTPUT: respond with ONLY this JSON object:
+{"query": <the query object described above>, "unresolved": [{"term": "<word>", "reason": "<why it cannot be mapped>"}]}
+"unresolved" is [] when every term maps to a column value/threshold or a defined term.
+
 EXAMPLES:
 Question: "how many open risks does A. Singh own"
-{"filter":{"op":"and","conditions":[{"column":"owner","op":"eq","value":"A. Singh"},{"column":"status","op":"eq","value":"Open"}]},"aggregate":{"fn":"count"}}
+{"query":{"filter":{"op":"and","conditions":[{"column":"owner","op":"eq","value":"A. Singh"},{"column":"status","op":"eq","value":"Open"}]},"aggregate":{"fn":"count"}},"unresolved":[]}
 
-Question: "list the high-score risks"
-{"select":["risk_id","title","score"],"filter":{"op":"and","conditions":[{"column":"score","op":"gte","value":15}]},"order_by":[{"column":"score","dir":"desc"}]}
+Question: "how many critical risks" (with "critical" defined above as score >= 16)
+{"query":{"aggregate":{"fn":"count"},"filter":{"op":"and","conditions":[{"column":"score","op":"gte","value":16}]}},"unresolved":[]}
 
-Question: "count risks per status"
-{"aggregate":{"fn":"count"},"group_by":["status"]}`;
+Question: "how many trivial risks" (no "trivial" definition, not a column value)
+{"query":{"aggregate":{"fn":"count"}},"unresolved":[{"term":"trivial","reason":"no defined threshold and not a value in any column"}]}`;
 
-export async function planQuery(
+/** Build the planner prompt. Pure — the QMS-defined terms (if any) are injected
+ *  as authoritative so the model decodes "critical" to the declared filter rather
+ *  than guessing. Separated out so the injection is unit-testable without an LLM. */
+export function buildPlanPrompt(
   question: string,
   columns: ColumnSchema[],
+  definitions: Derivation[] = [],
   previousError?: string,
-): Promise<QueryRequest> {
+): string {
   const errorNote = previousError
     ? `\nYour previous attempt was rejected with this error:\n${previousError}\nFix the query to address it.\n`
     : "";
+  const defs = definitionsBlock(definitions);
+  const defsSection = defs ? `\n${defs}\n` : "";
 
-  const prompt = `Generate a structured query to answer the question using this table.
+  return `Generate a structured query to answer the question using this table.
 
 Table columns:
 ${schemaSummary(columns)}
 
 ${PLANNER_RULES}
-${errorNote}
+${defsSection}${errorNote}
 Question: ${question}
 
-Respond with ONLY the query JSON object, no other text.`;
+Respond with ONLY the JSON object described under OUTPUT, no other text.`;
+}
 
+/** An interpretive term the planner declared it could not map to the schema or a
+ *  defined term — it abstained rather than guess a filter (increment 3). */
+export interface UnresolvedTerm {
+  term: string;
+  reason: string;
+}
+
+export interface PlanResult {
+  query: QueryRequest;
+  unresolved: UnresolvedTerm[];
+}
+
+/** Parse the planner's response into a PlanResult. Tolerant by design: it accepts
+ *  the {query, unresolved} wrapper, but also a bare query object (a model that
+ *  ignored the wrapper), so the common case never regresses — it just yields no
+ *  abstentions. Pure, so the contract is unit-testable without an LLM. */
+export function parsePlanResponse(content: string): PlanResult {
+  const parsed = extractJson(content) as Record<string, unknown>;
+  if (parsed && typeof parsed === "object" && "query" in parsed) {
+    const rawUnresolved = (parsed as { unresolved?: unknown }).unresolved;
+    const unresolved = Array.isArray(rawUnresolved)
+      ? rawUnresolved
+          .filter((u): u is UnresolvedTerm => Boolean(u) && typeof (u as UnresolvedTerm).term === "string")
+          .map((u) => ({ term: String(u.term), reason: String(u.reason ?? "") }))
+      : [];
+    return { query: (parsed as { query: QueryRequest }).query, unresolved };
+  }
+  // Bare query object (no wrapper) — treat the whole thing as the query.
+  return { query: parsed as unknown as QueryRequest, unresolved: [] };
+}
+
+export async function planQuery(
+  question: string,
+  columns: ColumnSchema[],
+  definitions: Derivation[] = [],
+  previousError?: string,
+): Promise<PlanResult> {
+  const prompt = buildPlanPrompt(question, columns, definitions, previousError);
   const response = await llm.invoke(prompt);
-  const parsed = extractJson(String(response.content)) as QueryRequest;
-  return parsed;
+  return parsePlanResponse(String(response.content));
 }

@@ -7,32 +7,16 @@
 // Note: no retry/wait logic here. If a service is down, calls should
 // fail fast with a clear error. 
 
-import { ChatOpenAI } from "@langchain/openai";
 import { QdrantClient } from "@qdrant/js-client-rest";
 import Redis from "ioredis";
 import { config } from "./config.js";
-import { LlmTraceCallback } from "./agent/llm-trace.js";
 
 // --- LLM client ---
-// Ollama exposes an OpenAI-compatible API, so we use ChatOpenAI
-// pointed at the local Ollama endpoint. The apiKey is required by
-// the SDK but Ollama ignores it.
-// Every llm.invoke in the codebase goes through THIS client - draft, reconcile,
-// the SQL planner, the section generator, the judge - so the trace callback is
-// attached here rather than at each call site. One attachment captures every
-// prompt and completion; per-call-site recording would be seven edits today and
-// a silent gap the first time someone adds an eighth.
-//
-// The callback only records calls made inside a graph run (it reads the run
-// scope the node wrapper publishes) and swallows its own errors, so it can
-// never fail the model call it is observing.
-export const llm = new ChatOpenAI({
-  model: config.ollama.model,
-  configuration: { baseURL: config.ollama.baseUrl },
-  apiKey: "ollama-no-key-needed",
-  temperature: 0.2,
-  callbacks: [new LlmTraceCallback()],
-});
+// Re-exported from its own module. The client lives in llm-client.ts so that the
+// agent role can import `llm` WITHOUT pulling in the Qdrant/Redis clients this
+// module constructs (decision-13 refactor R4). Non-agent callers may keep
+// importing it from here; the agent imports it from ./llm-client.js.
+export { llm } from "./llm-client.js";
 
 // --- Qdrant client ---
 // NOTE: the config is tier-aware (qdrant.operations.url). Reading the old flat

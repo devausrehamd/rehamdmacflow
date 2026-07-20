@@ -129,6 +129,9 @@ export async function requireAuth(
         domain: entitlement.domain,
       },
       { correlationId, runId },
+      // The verified token, carried on ctx for onward Data Access API calls
+      // (e.g. QueryRecord persisting run state) — decision 13.
+      token,
     );
 
     next();

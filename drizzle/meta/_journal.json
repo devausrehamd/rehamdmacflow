@@ -120,6 +120,13 @@
       "when": 1718760120000,
       "tag": "0016_custody_artifacts",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1718760200000,
+      "tag": "0017_agent_trajectory",
+      "breakpoints": true
     }
   ]
 }

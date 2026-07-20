@@ -56,6 +56,15 @@ export interface RequestContext {
   // label - no extra plumbing through AgentState.
   correlationId: string;
   runId: string;
+
+  // --- The caller's bearer token, carried for onward Data Access API calls ---
+  //
+  // Decision 13: the agent role holds no database client. Code that has a ctx but
+  // no graph state — notably QueryRecord persisting run state — reaches the API
+  // with this token (min(user, agent), §6). In-memory only: ctx is never
+  // serialised (QueryRecord persists `data`, not ctx), and redact() strips
+  // token-named keys from trace writes, so this never lands in a store.
+  token?: string;
 }
 
 /** Build a context from a verified user identity (typically from a JWT payload). */
@@ -68,6 +77,7 @@ export function buildContext(
     domain: string;
   },
   custody: { correlationId: string; runId: string },
+  token?: string,
 ): RequestContext {
   const roleConfig = ROLES[user.role];
   return {
@@ -86,6 +96,7 @@ export function buildContext(
     domain: entitlement.domain,
     correlationId: custody.correlationId,
     runId: custody.runId,
+    token,
   };
 }
 

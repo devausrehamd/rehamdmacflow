@@ -20,10 +20,8 @@ import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import type { Serialized } from "@langchain/core/load/serializable";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { LLMResult } from "@langchain/core/outputs";
-import { sql } from "drizzle-orm";
 import { config } from "../config.js";
-import { db } from "../db/client.js";
-import { agent_llm_calls } from "../db/schema.js";
+import { traceClient } from "../data/trace-client.js";
 import { currentRunScope, type RunScope } from "./instrument.js";
 
 /** A call in flight: LangChain hands us the prompt on start and the completion
@@ -82,21 +80,27 @@ export class LlmTraceCallback extends BaseCallbackHandler {
   }
 
   private async record(p: Pending, completion: string | null, status: "ok" | "error", error?: string): Promise<void> {
+    // The token rides in the run scope the node wrapper published; without it the
+    // call cannot be written via the API. Skip rather than lose the run — the
+    // batch judge and health check run with no scope and never reach here.
+    const token = p.scope.authToken;
+    if (!token) {
+      console.warn("[llm-trace] no auth token in scope; LLM call not recorded");
+      return;
+    }
     try {
-      await db.insert(agent_llm_calls).values({
-        correlation_id: p.scope.correlationId,
-        run_id: p.scope.runId,
+      // Recorded THROUGH the Data Access API (decision 13): no db client here.
+      // The seq is resolved server-side inside the INSERT.
+      await traceClient(token).llmCall({
+        correlationId: p.scope.correlationId,
+        runId: p.scope.runId,
         node: p.scope.node,
-        // Resolved in the INSERT: no per-run counter to keep in memory, and
-        // nothing to get wrong if calls ever overlap.
-        seq: sql`(SELECT COALESCE(MAX(c.seq), 0) + 1 FROM agent_llm_calls c WHERE c.correlation_id = ${p.scope.correlationId})`,
         model: p.model ?? config.ollama.model,
         prompt: p.prompt,
         completion,
         status,
-        error: error ?? null,
-        latency_ms: Date.now() - p.startedAt,
-        user_id: p.scope.userId ?? null,
+        error,
+        latencyMs: Date.now() - p.startedAt,
         mode: config.mode,
       });
     } catch (err) {

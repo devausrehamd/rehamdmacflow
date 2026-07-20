@@ -17,10 +17,8 @@
 // without touching custody's integrity.
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import { sql } from "drizzle-orm";
 import { config } from "../config.js";
-import { db } from "../db/client.js";
-import { agent_run_steps } from "../db/schema.js";
+import { traceClient } from "../data/trace-client.js";
 
 /**
  * Which run, and which node, is executing right now.
@@ -42,6 +40,10 @@ export interface RunScope {
   runId: string;
   node: string;
   userId?: string;
+  /** The caller's bearer token, so a trace write (this node's step, or an LLM
+   *  call made beneath it) can reach the Data Access API. Held in memory only,
+   *  never written — redact() strips token-named keys from what is recorded. */
+  authToken?: string;
 }
 
 const runScope = new AsyncLocalStorage<RunScope>();
@@ -97,17 +99,22 @@ interface RunIdentity {
   runId: string;
   queryId?: string;
   userId?: string;
+  authToken?: string;
 }
 
 function identify(state: unknown): RunIdentity | null {
-  const s = state as { ctx?: { correlationId?: string; runId?: string; user?: { id?: string } }; queryId?: string };
+  const s = state as {
+    ctx?: { correlationId?: string; runId?: string; user?: { id?: string } };
+    queryId?: string;
+    authToken?: string;
+  };
   const correlationId = s?.ctx?.correlationId;
   const runId = s?.ctx?.runId;
   // No correlation id means the row could never be tied back to a run or its
   // custody record, which is the only thing that makes it evidence. Skip rather
   // than write something unattributable.
   if (!correlationId || !runId) return null;
-  return { correlationId, runId, queryId: s.queryId, userId: s?.ctx?.user?.id };
+  return { correlationId, runId, queryId: s.queryId, userId: s?.ctx?.user?.id, authToken: s.authToken };
 }
 
 /** Record one step directly, for callers that are not graph nodes.
@@ -123,6 +130,7 @@ export async function recordRunStep(args: {
   correlationId: string;
   runId: string;
   userId?: string;
+  authToken?: string;
   node: string;
   input: unknown;
   output: unknown;
@@ -131,7 +139,7 @@ export async function recordRunStep(args: {
   latencyMs: number;
 }): Promise<void> {
   await recordStep({
-    id: { correlationId: args.correlationId, runId: args.runId, userId: args.userId },
+    id: { correlationId: args.correlationId, runId: args.runId, userId: args.userId, authToken: args.authToken },
     node: args.node,
     input: args.input,
     output: args.output,
@@ -157,21 +165,27 @@ async function recordStep(args: {
   error?: string;
   latencyMs: number;
 }): Promise<void> {
-  // seq is resolved in the INSERT rather than counted in memory: no per-run
-  // counter to leak, and nothing to get wrong if the graph ever stops being
-  // linear.
-  await db.insert(agent_run_steps).values({
-    correlation_id: args.id.correlationId,
-    run_id: args.id.runId,
-    query_id: args.id.queryId ?? null,
-    seq: sql`(SELECT COALESCE(MAX(s.seq), 0) + 1 FROM agent_run_steps s WHERE s.correlation_id = ${args.id.correlationId})`,
+  // Recorded THROUGH the Data Access API (decision 13): no db client here. The
+  // seq is resolved server-side inside the INSERT. Redaction stays on the way OUT
+  // of the agent — the token and any secret-named field are stripped before the
+  // payload leaves this process, so no credential transits the request body.
+  const token = args.id.authToken;
+  if (!token) {
+    // No caller token: the run trace cannot be written via the API. Best-effort,
+    // like the swallowed db failure before it — logged so the hole is visible.
+    console.warn(`[instrument] no auth token for step '${args.node}'; run trace not recorded`);
+    return;
+  }
+  await traceClient(token).runStep({
+    correlationId: args.id.correlationId,
+    runId: args.id.runId,
+    queryId: args.id.queryId,
     node: args.node,
-    input: redact(args.input) as object,
-    output: args.output === undefined ? null : (redact(args.output) as object),
+    input: redact(args.input),
+    output: args.output === undefined ? null : redact(args.output),
     status: args.status,
-    error: args.error ?? null,
-    latency_ms: Math.round(args.latencyMs),
-    user_id: args.id.userId ?? null,
+    error: args.error,
+    latencyMs: args.latencyMs,
     mode: config.mode,
   });
 }
@@ -199,7 +213,7 @@ export function instrument<S, A extends unknown[], R>(
     // Publish who we are for the duration of the node, so any LLM call made
     // beneath it - however deep - can be attributed back to this node and run.
     const scope: RunScope | undefined = id
-      ? { correlationId: id.correlationId, runId: id.runId, node, userId: id.userId }
+      ? { correlationId: id.correlationId, runId: id.runId, node, userId: id.userId, authToken: id.authToken }
       : undefined;
     const withScope = <T>(f: () => Promise<T>): Promise<T> =>
       scope ? runScope.run(scope, f) : f();

@@ -57,7 +57,8 @@
     "smoke:manifest": "tsx scripts/smoke-test-manifest.ts",
     "integration:manifest": "tsx scripts/smoke-test-manifest-live.ts",
     "integration:data-access": "tsx scripts/smoke-test-data-access-live.ts",
-    "smoke:dag-history": "tsx scripts/smoke-test-dag-history.ts"
+    "smoke:dag-history": "tsx scripts/smoke-test-dag-history.ts",
+    "smoke:supervisor": "tsx scripts/smoke-test-supervisor.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.1.48",

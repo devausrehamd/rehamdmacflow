@@ -13,7 +13,7 @@
 import { llm } from "../../llm-client.js";
 import { QueryRecord } from "../../queries.js";
 import type { AgentStateType } from "../state.js";
-import { buildReconciliationPrompt } from "../prompts.js";
+import { buildReconciliationPrompt, repairCitation } from "../prompts.js";
 
 export async function reconcile(state: AgentStateType): Promise<Partial<AgentStateType>> {
   const { ctx, queryId, question, partialsByTier } = state;
@@ -27,8 +27,18 @@ export async function reconcile(state: AgentStateType): Promise<Partial<AgentSta
   const startTime = Date.now();
   const prompt = buildReconciliationPrompt(question, partialsByTier);
   const response = await llm.invoke(prompt);
-  const finalAnswer = String(response.content);
   const latency = Date.now() - startTime;
+
+  // Deterministic net: if the model emitted a placeholder citation ("[Insert
+  // relevant citation here]") instead of a real one, replace it with the sources
+  // that were actually retrieved for this run - so even a "no data" answer cites
+  // what was reviewed rather than a template. Real "[Source N: …]" citations pass
+  // through untouched.
+  const sourcePaths = Object.values(queryRecord.toJSON().tiers)
+    .flatMap((t) => t.chunks ?? [])
+    .map((c) => c.source_path)
+    .filter((p): p is string => Boolean(p));
+  const finalAnswer = repairCitation(String(response.content), sourcePaths);
 
   // setFinalAnswer also marks the query as "complete"
   await queryRecord.setFinalAnswer(finalAnswer, latency);

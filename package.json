@@ -65,6 +65,7 @@
     "integration:trace-api": "tsx scripts/smoke-test-trace-api-live.ts",
     "integration:vector-api": "tsx scripts/smoke-test-vector-api-live.ts",
     "smoke:agent-db-free": "tsx scripts/smoke-test-agent-db-free.ts",
+    "smoke:citation": "tsx scripts/smoke-test-citation.ts",
     "integration:query-record-api": "tsx scripts/smoke-test-query-record-api-live.ts"
   },
   "dependencies": {

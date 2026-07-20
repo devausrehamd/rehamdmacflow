@@ -24,6 +24,8 @@ import { z } from "zod";
 import { requireAuth } from "../auth/middleware.js";
 import { putArtifact, getArtifact, type Artifact } from "../../custody/artifacts.js";
 import { appendEvent, type CustodyContext, type CustodyEventType } from "../../custody/ledger.js";
+import { insertRunStep, insertLlmCall } from "../../data/trace-store.js";
+import { recordTrajectoryStep, recordTerminal } from "../../platform/trajectory-history.js";
 
 export const dataAccessRouter = Router();
 
@@ -124,6 +126,116 @@ dataAccessRouter.post("/api/v1/data/custody/events", requireAuth, async (req, re
     };
     const result = await appendEvent(ctx, parsed.data.eventType as CustodyEventType, parsed.data.payload);
     res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ----- Diagnostic trace + DAG History (decision-13 refactor R2) -----
+//
+// The agent role used to write these tables directly (agent/instrument.ts,
+// agent/llm-trace.ts, and the DAG-History mirror). They now POST here. user_id is
+// stamped from the verified token, not the body — the same identity guarantee the
+// custody endpoint makes. input/output arrive already redacted by the agent.
+
+const runStepBody = z.object({
+  correlationId: z.string().min(1),
+  runId: z.string().min(1),
+  queryId: z.string().optional(),
+  node: z.string().min(1),
+  input: z.unknown(),
+  output: z.unknown(),
+  status: z.enum(["ok", "error"]),
+  error: z.string().optional(),
+  latencyMs: z.number(),
+  mode: z.string().optional(),
+});
+
+dataAccessRouter.post("/api/v1/data/run-steps", requireAuth, async (req, res, next) => {
+  try {
+    const parsed = runStepBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid run step.", issues: parsed.error.errors });
+      return;
+    }
+    await insertRunStep({ ...parsed.data, userId: req.ctx!.user.id });
+    res.status(201).json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const llmCallBody = z.object({
+  correlationId: z.string().min(1),
+  runId: z.string().min(1),
+  node: z.string().optional(),
+  model: z.string().optional(),
+  prompt: z.string(),
+  completion: z.string().nullable().optional(),
+  status: z.enum(["ok", "error"]),
+  error: z.string().optional(),
+  latencyMs: z.number(),
+  mode: z.string().optional(),
+});
+
+dataAccessRouter.post("/api/v1/data/llm-calls", requireAuth, async (req, res, next) => {
+  try {
+    const parsed = llmCallBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid LLM call.", issues: parsed.error.errors });
+      return;
+    }
+    await insertLlmCall({ ...parsed.data, userId: req.ctx!.user.id });
+    res.status(201).json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const trajectoryStepBody = z.object({
+  correlationId: z.string().min(1),
+  agentGuid: z.string().min(1),
+  seq: z.number().int(),
+  capability: z.string().optional(),
+  kind: z.string().min(1),
+  input: z.unknown(),
+  outputRef: z.string().nullable().optional(),
+  status: z.enum(["ok", "error"]),
+  error: z.string().optional(),
+});
+
+dataAccessRouter.post("/api/v1/data/trajectory/steps", requireAuth, async (req, res, next) => {
+  try {
+    const parsed = trajectoryStepBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid trajectory step.", issues: parsed.error.errors });
+      return;
+    }
+    await recordTrajectoryStep(parsed.data);
+    res.status(201).json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const trajectoryTerminalBody = z.object({
+  correlationId: z.string().min(1),
+  agentGuid: z.string().min(1),
+  seq: z.number().int(),
+  outcome: z.enum(["completed", "failed", "shutdown"]),
+  finalRef: z.string().optional(),
+  reason: z.string().optional(),
+});
+
+dataAccessRouter.post("/api/v1/data/trajectory/terminal", requireAuth, async (req, res, next) => {
+  try {
+    const parsed = trajectoryTerminalBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid trajectory terminal.", issues: parsed.error.errors });
+      return;
+    }
+    await recordTerminal(parsed.data);
+    res.status(201).json({ ok: true });
   } catch (err) {
     next(err);
   }

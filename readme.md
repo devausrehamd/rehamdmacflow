@@ -88,6 +88,7 @@ of one behaviour; reading them is the fastest way to learn the system.
 | `npm run smoke:doctype-contract` | The DocumentType contract: requiredInputs, capability-typed steps, and the capability/format pre-flight (custody-DAG Phase 3) |
 | `npm run smoke:discovery-registry` | Discovery-backed capability resolution: capability → live agent, production preferred (agent-platform Stage 1) |
 | `npm run smoke:manifest` | The agent manifest: schema, boot-from-git-tag commit pin, manifest → Agent Card (agent-platform Stage 2) |
+| `npm run smoke:supervisor` | The Supervisor: ensure-running (reuse-or-launch), launch-once dedupe, and TTL idle-destroy (agent-platform Stage 4) |
 | `npm run smoke:review` | The review contract's pure parts: human-edit provenance + renderer |
 | `npm run smoke:batch` | The k-sampling instrument, with a **mock** judge of controllable variance |
 | `npm run smoke:export` | The exporter: a pure document-model → markdown renderer, byte-golden and deterministic (custody-DAG Phase 6) |

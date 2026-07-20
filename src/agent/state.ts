@@ -14,6 +14,7 @@ import { Annotation } from "@langchain/langgraph";
 import type { RequestContext } from "../context.js";
 import type { RetrievedChunk } from "../queries.js";
 import type { QueryUnderstanding } from "./understand.js";
+import type { GroundingIssue } from "./grounding.js";
 
 // A single SQL retrieval result - one table queried, its rows, and the SQL
 // that produced them (for transparency in the partial-answer prompt).
@@ -64,6 +65,14 @@ export const AgentState = Annotation.Root({
   partialsByTier: Annotation<Record<string, string>>({
     reducer: (current, update) => ({ ...current, ...update }),
     default: () => ({}),
+  }),
+
+  // Filters the SQL planner produced whose values fall outside their column's
+  // domain — decode failures the grounding gate refused to execute. When present,
+  // the graph answers by calling them out (deterministically) rather than guessing.
+  groundingIssues: Annotation<GroundingIssue[]>({
+    reducer: (current, update) => (update && update.length > 0 ? update : current),
+    default: () => [],
   }),
 
   // The reconciled final answer (set by reconcile node)

@@ -27,6 +27,7 @@ import {
 } from "../sql-planner.js";
 import { getTable, queryTable, DataApiError } from "../../data/client.js";
 import { custodyClient } from "../../data/custody-client.js";
+import { checkGrounding, fieldSummary, type GroundingIssue } from "../grounding.js";
 
 interface BlurbRef {
   tableId: string;
@@ -104,8 +105,9 @@ export async function sqlRetrieve(state: AgentStateType): Promise<Partial<AgentS
     return {};
   }
 
-  // --- For each selected table: plan -> execute -> retry once ---
+  // --- For each selected table: plan -> ground -> execute -> retry once ---
   const sqlResults: Record<string, SqlResult> = {};
+  const groundingIssues: GroundingIssue[] = [];
 
   for (const tableId of gate.tableIds) {
     try {
@@ -116,21 +118,44 @@ export async function sqlRetrieve(state: AgentStateType): Promise<Partial<AgentS
       let queryReq = await planQuery(question, detail.columns);
       console.log(`[sql-retrieve] planned query for ${tableId}: ${JSON.stringify(queryReq)}`);
 
+      // Grounding gate: a filter whose value falls outside its column's domain is
+      // a decode failure ("likelihood = 5" when likelihood is 1–4), not a "0
+      // results" answer. Refuse to execute it — the graph calls it out rather than
+      // guess. Re-checked after any corrective replan below.
+      let grounding = checkGrounding(queryReq, detail.columns);
+
       // Execute, with one corrective retry on validation error
       let result;
-      try {
-        result = await queryTable(authToken, tableId, queryReq);
-      } catch (err) {
-        if (err instanceof DataApiError && err.status === 400) {
-          console.log(`[sql-retrieve] query rejected (${err.message}), replanning...`);
-          // Replan with the error, try once more
-          queryReq = await planQuery(question, detail.columns, err.message);
-          console.log(`[sql-retrieve] replanned query: ${JSON.stringify(queryReq)}`);
+      if (grounding.grounded) {
+        try {
           result = await queryTable(authToken, tableId, queryReq);
-        } else {
-          throw err;
+        } catch (err) {
+          if (err instanceof DataApiError && err.status === 400) {
+            console.log(`[sql-retrieve] query rejected (${err.message}), replanning...`);
+            // Replan with the error, try once more
+            queryReq = await planQuery(question, detail.columns, err.message);
+            console.log(`[sql-retrieve] replanned query: ${JSON.stringify(queryReq)}`);
+            grounding = checkGrounding(queryReq, detail.columns);
+            if (grounding.grounded) result = await queryTable(authToken, tableId, queryReq);
+          } else {
+            throw err;
+          }
         }
       }
+
+      // Ungrounded: record the decode failure and move on — the graph will answer
+      // by calling it out rather than reporting a misleading count.
+      if (!grounding.grounded) {
+        console.log(`[sql-retrieve] ungrounded query for ${tableId}: ${JSON.stringify(grounding.ungrounded)}`);
+        groundingIssues.push({
+          tableId,
+          displayName: detail.display_name,
+          ungrounded: grounding.ungrounded,
+          availableFields: fieldSummary(detail.columns),
+        });
+        continue;
+      }
+      if (!result) continue; // grounded but produced no result (defensive)
 
       sqlResults[tableId] = {
         tableId,
@@ -184,5 +209,5 @@ export async function sqlRetrieve(state: AgentStateType): Promise<Partial<AgentS
     }
   }
 
-  return { sqlResults };
+  return { sqlResults, groundingIssues };
 }

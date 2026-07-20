@@ -54,6 +54,8 @@ flowchart TB
   agents -->|content-addressed artifacts| store[("Artifact store")]
   cfg[("Git: manifests, catalog, rubrics - tagged")] -.->|pinned commit| sup
   cfg -.-> talk
+  disc -->|live and ready state| gui["GUI - system status console"]
+  sup -->|launch and lifecycle state| gui
 ```
 
 - **Talk Agent (orchestrator)** — user-facing entry point. Classifies the request
@@ -63,9 +65,15 @@ flowchart TB
 - **Discovery** — passive registry (existing). Agents self-register and hold
   heartbeat leases. Extended to report **`ready`** (ingested and serving) versus
   merely **`up`**.
-- **Supervisor** — the launch plane (new). Determines how to start each agent
-  (command, resources, config tag), drives it to `ready`, and applies the
-  idle/destroy policy.
+- **Supervisor** — the launch plane, a **separate service** (new). Determines how
+  to start each agent (command, resources, config tag), drives it to `ready`, and
+  applies a **TTL idle-destroy policy** (§5). It is separate from Discovery
+  deliberately: it has a distinct failure mode (launching processes) from a
+  registry (recording liveness).
+- **GUI** — the system-status console (existing client, extended). Renders the
+  state of the network from Discovery (which agents are live and `ready`) and the
+  Supervisor (launch and lifecycle state); read-only observability, no control
+  authority.
 - **ID Server** — identity and entitlements (existing). Signs the login JWT; agents
   verify it and resolve entitlements per request.
 - **Provenance API** — durable mirror of the custody **chain** (existing, as the
@@ -163,9 +171,13 @@ sequenceDiagram
   T-->>U: answer with provenance, or missing-input, or denied
 ```
 
-Maps steps 1–9. The classification in step 1 is the **non-deterministic seam** and
-must be bracketed as the thinker is: a deterministic catalog match first, the LLM
-only to disambiguate, and confirmation of the plan before the fan-out is spent.
+Maps steps 1–9. Step 1 is **capability selection**: the Talk Agent traverses the
+catalog of available capabilities and selects the one or more whose declared scope
+is closest to the request. Selecting more than one produces a fan-out. This is the
+**non-deterministic seam** and must be bracketed as the thinker is — a
+deterministic catalog match where the request maps cleanly, the LLM only to rank
+or disambiguate close candidates, and confirmation of the selected capabilities
+before the fan-out is spent.
 
 ---
 
@@ -186,10 +198,11 @@ States: `launching → configuring → ingesting → ready → (serving⇄idle) 
 4. Register with Discovery, advertising `ready`, capabilities, and `configCommit`.
 
 **Destruction:**
-- **Graceful** (idle policy, or explicit stop): the Supervisor sends `SIGTERM`; the
-  agent **drains** — completes in-flight work, flushes the trajectory tail, writes
-  the terminal marker, deregisters from Discovery — and exits. Ingested state
-  persists.
+- **Graceful** (TTL idle expiry, or explicit stop): the Supervisor destroys an
+  agent after a configurable idle **TTL** with no dispatched work, or on explicit
+  request. It sends `SIGTERM`; the agent **drains** — completes in-flight work,
+  flushes the trajectory tail, writes the terminal marker, deregisters from
+  Discovery — and exits. Ingested state persists.
 - **Crash / SIGKILL / OOM:** no graceful path. The Discovery lease **expires** and
   the agent is dropped from the live list. Reconciliation reads the DAG History:
   the last step with no terminal marker indicates termination mid-operation at step
@@ -360,20 +373,26 @@ referenced from a manifest's `pipeline` — no new agent code.
    never destroys its ingested state; a relaunch is warm.
 7. Ingestion is a **registry of pure typed converters**; extension is a new
    converter plus configuration.
+8. The **Supervisor is a separate service**, distinct from Discovery (a distinct
+   failure mode: launching processes versus recording liveness).
+9. Idle destruction is governed by a configurable **TTL**: an agent with no
+   dispatched work for the TTL period is destroyed; ingested state persists.
+10. Capability selection traverses the catalog and selects the **closest one or
+    more capabilities** to the request; multiple selections fan out.
+11. The **GUI** renders network and system status from Discovery and the
+    Supervisor; it is read-only observability, not a control surface.
 
 ## 12. Open questions
 
-- **Supervisor placement** — co-located with Discovery, or a separate service?
-  (A separate service is preferred; it has a distinct failure mode.)
-- **Idle-destroy policy** — TTL, or LRU under a resource cap? Set per manifest or
-  globally?
 - **Result store for §8a idempotency** — reuse custody keyed by correlation, or a
   dedicated results cache with its own TTL?
 - **Converter sandboxing** — `html->md` and `websearch->*` fetch untrusted content;
   network and parser isolation, and treatment of fetched content as data, not
   instructions.
-- **Talk-agent classification** — the balance between LLM classification and a
-  deterministic catalog matcher.
+- **TTL value and scope** — a single global idle TTL, or per-manifest overrides
+  (a warm-pool agent may warrant a longer TTL than an on-demand one)?
+- **Selection threshold** — the similarity floor below which the Talk Agent asks
+  for clarification rather than selecting a capability.
 
 ## 13. Implementation sequence
 

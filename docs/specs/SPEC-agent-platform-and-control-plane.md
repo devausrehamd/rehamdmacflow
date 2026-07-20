@@ -412,7 +412,8 @@ referenced from a manifest's `pipeline` — no new agent code.
 8. The **Supervisor is a separate service**, distinct from Discovery (a distinct
    failure mode: launching processes versus recording liveness).
 9. Idle destruction is governed by a configurable **TTL**: an agent with no
-   dispatched work for the TTL period is destroyed; ingested state persists.
+   dispatched work for the TTL period is destroyed. Its VM is discarded; the
+   shared ingest cache and all evidence are external and unaffected.
 10. Capability selection traverses the catalog and selects the **closest one or
     more capabilities** to the request; multiple selections fan out.
 11. The **GUI** renders network and system status from Discovery and the

@@ -14,14 +14,23 @@
 // (no orphan nodes, no missing edges, etc.).
 
 import { StateGraph, START, END } from "@langchain/langgraph";
-import { AgentState } from "./state.js";
+import { AgentState, type AgentStateType } from "./state.js";
 import { instrument } from "./instrument.js";
 import { understand } from "./nodes/understand.js";
 import { retrieve } from "./nodes/retrieve.js";
 import { sqlRetrieve } from "./nodes/sql-retrieve.js";
 import { draftPartials } from "./nodes/draft.js";
+import { directAnswer } from "./nodes/direct-answer.js";
 import { reconcile } from "./nodes/reconcile.js";
 import { finalize } from "./nodes/finalize.js";
+import { composeExactAnswer } from "./compose-exact.js";
+
+// After SQL retrieval, take the deterministic short-circuit when the exact data
+// already answers a quantitative question (no LLM needed); otherwise fall through
+// to the LLM answer path (draft + reconcile) that synthesises prose from context.
+function routeAfterSql(state: AgentStateType): "direct" | "draft" {
+  return composeExactAnswer(state.question, state.sqlResults, state.chunksByTier) !== null ? "direct" : "draft";
+}
 
 // Every node goes through `instrument`, which records what it was given and
 // what it returned into agent_run_steps.
@@ -36,12 +45,15 @@ const builder = new StateGraph(AgentState)
   .addNode("retrieve", instrument("retrieve", retrieve))
   .addNode("sql_retrieve", instrument("sql_retrieve", sqlRetrieve))
   .addNode("draft", instrument("draft", draftPartials))
+  .addNode("direct_answer", instrument("direct_answer", directAnswer))
   .addNode("reconcile", instrument("reconcile", reconcile))
   .addNode("finalize", instrument("finalize", finalize))
   .addEdge(START, "understand")
   .addEdge("understand", "retrieve")
   .addEdge("retrieve", "sql_retrieve")
-  .addEdge("sql_retrieve", "draft")
+  // Exact-data short-circuit: skip the LLM answer path when the number is known.
+  .addConditionalEdges("sql_retrieve", routeAfterSql, { direct: "direct_answer", draft: "draft" })
+  .addEdge("direct_answer", "finalize")
   .addEdge("draft", "reconcile")
   .addEdge("reconcile", "finalize")
   .addEdge("finalize", END);

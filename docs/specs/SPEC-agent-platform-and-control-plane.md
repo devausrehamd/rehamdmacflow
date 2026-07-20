@@ -31,6 +31,16 @@ systems, is that **three planes must remain separate.**
 The Talk Agent queries Discovery and instructs the Supervisor. It never launches
 processes directly, and it never substitutes its own authority for the caller's.
 
+A second governing principle: **all database access is API-mediated.** Every read
+and every write — to Postgres and to Qdrant — passes through a REST API; no
+component holds a direct database client, and agents carry no database
+credentials. This holds even for a co-located ("local") database: the API is the
+single point at which permissions are filtered (`min(user, agent)`, §6), fields
+are redacted, and the access is audited, and it decouples every caller from
+storage so the database can be moved, sharded, replicated, or load-balanced
+without touching a caller. Structured reads already take this path (the read-only
+data API); the platform extends it to every store and every write.
+
 ---
 
 ## 2. Components
@@ -422,6 +432,11 @@ referenced from a manifest's `pipeline` — no new agent code.
 12. Decision branches are **retired, not deleted**: retirement is an append-only,
     gated `human_decision` recorded in custody; the branch and its trajectory are
     retained, and it is reversed only by a further recorded decision.
+13. **All database access is API-mediated** — every read and write, to Postgres
+    and Qdrant, goes through a REST API. No component holds a direct database
+    client and agents carry no database credentials, even against a local
+    database. The API is the permission-filter, redaction, and audit point, and
+    the decoupling point that permits load-balancing and relocation of storage.
 
 ## 12. Open questions
 
@@ -437,13 +452,26 @@ referenced from a manifest's `pipeline` — no new agent code.
 
 ## 13. Implementation sequence
 
+0. **Data Access API** — the foundation decision 13 requires. A REST service (or
+   set of services) owns the Postgres and Qdrant connections and exposes read and
+   write endpoints for every store, applying auth and `min(user, agent)` on each
+   call. Every later stage ships behind it; agents receive an API client and a
+   token, never a database client. The existing read-only data API is the starting
+   point, extended to cover writes and every store.
 1. Remote `CapabilityRegistry` backed by Discovery (the Phase 5 seam made real).
 2. Agent manifest, boot-from-git-tag, and self-registration (`ready`).
-3. DAG History endpoint and the write-ahead mirror of `recordRunStep`.
+3. DAG History **endpoint** and the write-ahead mirror of `recordRunStep` — the
+   endpoint is the trajectory store's write API; the mirror POSTs to it.
 4. Supervisor (ensure-running, ingest-to-ready, idle policy).
 5. Talk Agent (classify → confirm → orchestrate), last, once its dependencies
    exist.
 6. Converter registry and the first new converter (`html->md`).
+
+> **Refactor obligation (decision 13).** The stores built while bootstrapping the
+> earlier stages — artifacts, DAG History, custody, ingestion — currently write
+> Postgres directly, in-process. Each is refactored to sit behind its Data Access
+> API endpoint, and the agent role loses its direct database client, before those
+> stages are considered complete under this rule.
 
 ## Glossary
 - **Talk Agent / Orchestrator** — user-facing entry point; sole custody-chain writer.

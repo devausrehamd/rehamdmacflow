@@ -39,13 +39,24 @@ export interface GroundingResult {
   ungrounded: UngroundedCondition[];
 }
 
-/** A grounding problem for one table, ready to render in a call-it-out answer. */
+/** An interpretive term the planner declared it could not map (increment 3). */
+export interface UnresolvedTerm {
+  term: string;
+  reason: string;
+}
+
+/** A grounding problem for one table, ready to render in a call-it-out answer.
+ *  Either an impossible filter (`ungrounded`, increment 1) or an interpretive
+ *  term the decoder abstained on (`unresolvedTerms`, increment 3), or both. */
 export interface GroundingIssue {
   tableId: string;
   displayName: string;
   ungrounded: UngroundedCondition[];
+  unresolvedTerms?: UnresolvedTerm[];
   /** The fields the caller CAN query, with their domains/ranges. */
   availableFields: string[];
+  /** The interpretive terms the QMS DOES define for this table, to suggest. */
+  definedTerms?: string[];
 }
 
 const OP_SYMBOL: Partial<Record<FilterOp, string>> = {
@@ -159,12 +170,18 @@ export function fieldSummary(columns: ColumnSchema[]): string[] {
  */
 export function composeGroundingNotice(issues: GroundingIssue[]): string {
   const out: string[] = [
-    "I couldn't map part of your question to a defined field, so I won't guess a number.",
+    "I couldn't map part of your question to a defined field or term, so I won't guess a number.",
   ];
   for (const issue of issues) {
     out.push("");
     for (const u of issue.ungrounded) {
       out.push(`- "${u.conditionText}" doesn't match anything in the "${issue.displayName}" — ${u.reason}.`);
+    }
+    for (const t of issue.unresolvedTerms ?? []) {
+      out.push(`- "${t.term}" is a judgment term the QMS hasn't defined for the "${issue.displayName}" — ${t.reason}.`);
+    }
+    if (issue.definedTerms && issue.definedTerms.length > 0) {
+      out.push(`Defined terms you can use here: ${issue.definedTerms.join(", ")}.`);
     }
     out.push("");
     out.push(`Fields you can query in the "${issue.displayName}":`);
@@ -172,7 +189,7 @@ export function composeGroundingNotice(issues: GroundingIssue[]): string {
   }
   out.push("");
   out.push(
-    'Rephrase using one of these — for example a numeric threshold ("score ≥ 16") or an exact value from a listed set ("status is Open").',
+    'Rephrase using a defined term or field — e.g. a numeric threshold ("score ≥ 16") or an exact value from a listed set ("status is Open") — or define the term in the QMS derivations registry.',
   );
   return out.join("\n");
 }

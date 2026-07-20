@@ -86,6 +86,7 @@ of one behaviour; reading them is the fastest way to learn the system.
 | `npm run smoke:rubrics` | The rubric loader and the draft/review schema foundation |
 | `npm run smoke:rubric-api` | The rubric API's validation core, headless (no server, no GUI) |
 | `npm run smoke:doctype-contract` | The DocumentType contract: requiredInputs, capability-typed steps, and the capability/format pre-flight (custody-DAG Phase 3) |
+| `npm run smoke:discovery-registry` | Discovery-backed capability resolution: capability → live agent, production preferred (agent-platform Stage 1) |
 | `npm run smoke:review` | The review contract's pure parts: human-edit provenance + renderer |
 | `npm run smoke:batch` | The k-sampling instrument, with a **mock** judge of controllable variance |
 | `npm run smoke:export` | The exporter: a pure document-model → markdown renderer, byte-golden and deterministic (custody-DAG Phase 6) |
@@ -125,6 +126,7 @@ URL are overridable via `QMS_SMOKE_USER` / `QMS_SMOKE_PASSWORD` / `QMS_IDENTITY_
 | Command | Exercises |
 |---------|-----------|
 | `npm run integration:denied` | **Fail case:** `reviewer1` logs in but is correctly DENIED the quality domain and `engineering:restricted` (fails closed). Fast, deterministic — no LLM. |
+| `npm run integration:discovery-registry` | Capability resolution against a **live Discovery**: register fixtures, resolve, deregister (agent-platform Stage 1). Needs Discovery, no LLM. |
 | `npm run integration:agent` | The agent graph end-to-end (understand → retrieve → SQL → draft → reconcile) |
 | `npm run integration:hybrid` | Hybrid retrieval — the agent querying SQL *and* vectors for a count |
 | `npm run integration:custody-e2e` | Custody over **real HTTP**: ask → correlation id → dossier export |

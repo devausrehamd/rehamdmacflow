@@ -31,10 +31,14 @@ what. The exact cross-service token contract is in
 [09-services-and-auth.md](09-services-and-auth.md).
 
 **Build specs** (implementation plans for larger changes) live in
-[`specs/`](specs/): the next architecture step —
-[agent topology, custody DAG, capability dispatch & readiness gate](specs/SPEC-agent-topology-and-custody-dag.md)
-(researcher → thinker → exporter → actioner, with parallel-safe content-addressed
-provenance and a deterministic input gate before the LLM).
+[`specs/`](specs/):
+- [agent topology, custody DAG, capability dispatch & readiness gate](specs/SPEC-agent-topology-and-custody-dag.md)
+  — researcher → thinker → exporter → actioner, with parallel-safe content-addressed
+  provenance and a deterministic input gate before the LLM (Phases 1–6, **built**).
+- [agent platform & control plane (AgentAsSoftware)](specs/SPEC-agent-platform-and-control-plane.md)
+  — the next step: declarative config-driven agents, Discovery + Supervisor,
+  JWT propagation, a write-ahead trajectory-history endpoint, dedup, and pluggable
+  ingestion converters (**design / thinking**).
 
 ---
 

@@ -26,6 +26,9 @@ import { putArtifact, getArtifact, type Artifact } from "../../custody/artifacts
 import { appendEvent, type CustodyContext, type CustodyEventType } from "../../custody/ledger.js";
 import { insertRunStep, insertLlmCall } from "../../data/trace-store.js";
 import { recordTrajectoryStep, recordTerminal } from "../../platform/trajectory-history.js";
+import { getTierServices } from "../../services.js";
+import { enforceLabels } from "../../identity/index.js";
+import type { DataTier } from "../../tiers.js";
 
 export const dataAccessRouter = Router();
 
@@ -236,6 +239,63 @@ dataAccessRouter.post("/api/v1/data/trajectory/terminal", requireAuth, async (re
     }
     await recordTerminal(parsed.data);
     res.status(201).json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ----- Vector search (decision-13 refactor R3) -----
+//
+// The agent's retrieval node used to hold a Qdrant client and search collections
+// directly. It now POSTs here. This endpoint is the ONE place the authorisation
+// filter is applied, and it is applied from the TOKEN, not the request: the
+// caller names a tier and a query vector, and the server
+//   1. rejects a tier the caller cannot access (min(user, agent), §6), and
+//   2. AND-combines the access-label filter built from the verified token's
+//      labels into the query — so restricted points are never fetched, and a
+//      caller cannot widen its own access by omitting or forging the filter.
+// `has_structured_table` is the only caller-supplied filter (the table lane).
+
+const vectorSearchBody = z.object({
+  tier: z.string().min(1),
+  vector: z.array(z.number()),
+  limit: z.number().int().positive().max(100),
+  tableOnly: z.boolean().optional(),
+});
+
+dataAccessRouter.post("/api/v1/data/vector-search", requireAuth, async (req, res, next) => {
+  try {
+    const parsed = vectorSearchBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid vector search.", issues: parsed.error.errors });
+      return;
+    }
+    const { tier, vector, limit, tableOnly } = parsed.data;
+
+    // Tier access is decided here, from the token — never trusted from the body.
+    if (!req.ctx!.user.accessibleTiers.includes(tier as DataTier)) {
+      res.status(403).json({ error: `No access to tier '${tier}'.` });
+      return;
+    }
+
+    // The label filter is server-authoritative, built from the caller's verified
+    // labels. Qdrant excludes points lacking the key, so an unlabelled point is
+    // invisible to everyone — fail-closed by construction.
+    const labelFilter = enforceLabels() ? [{ key: "access_labels", match: { any: req.ctx!.labels } }] : [];
+    const must = [
+      ...(tableOnly ? [{ key: "has_structured_table", match: { value: true } }] : []),
+      ...labelFilter,
+    ];
+
+    const svc = getTierServices(tier as DataTier);
+    const hits = await svc.qdrant.search(svc.qdrantCollection, {
+      vector,
+      limit,
+      with_payload: true,
+      ...(must.length > 0 ? { filter: { must } } : {}),
+    });
+
+    res.json({ hits: hits.map((h) => ({ id: h.id, score: h.score, payload: h.payload })) });
   } catch (err) {
     next(err);
   }

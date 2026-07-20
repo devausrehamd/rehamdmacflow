@@ -16,13 +16,13 @@
 // Final context = fused prose chunks + guaranteed table blurbs, deduped.
 
 import { embedBatch } from "../../embeddings.js";
-import { getAccessibleServices } from "../../services.js";
 import { QueryRecord, type RetrievedChunk } from "../../queries.js";
 import type { DataTier } from "../../tiers.js";
 import type { AgentStateType } from "../state.js";
 import { labelsIntersect } from "../../identity/classification.js";
 import { enforceLabels } from "../../identity/index.js";
 import { custodyClient } from "../../data/custody-client.js";
+import { vectorClient } from "../../data/vector-client.js";
 import { fuse, type RankedItem } from "../fusion.js";
 
 const PROSE_TOP_K = 6; // per-query search depth
@@ -85,42 +85,32 @@ export async function retrieve(state: AgentStateType): Promise<Partial<AgentStat
 
   const queryStrings = buildQueryStrings(state);
   const vectors = await embedBatch(queryStrings);
-  const primaryVector = vectors[0]; // the original question's embedding
+  const primaryVector = vectors[0]!; // the original question's embedding
 
-  const services = getAccessibleServices(ctx);
+  // Vector search is API-mediated (decision 13): the node holds an HTTP client and
+  // the caller's token, never a Qdrant client. The AUTHORISATION FILTER is applied
+  // server-side from the token — restricted points are never fetched, so they
+  // cannot be leaked by a clever question, prompt injection, or a bug in prompt
+  // assembly, and a caller cannot widen its own access by forging a filter. Each
+  // request carries only a tier and a query vector. Retrieval cannot run without a
+  // token, so require it explicitly.
+  if (!authToken) {
+    throw new Error("retrieve: an auth token is required for API-mediated vector search");
+  }
+  const vsearch = vectorClient(authToken);
   const chunksByTier: Record<string, RetrievedChunk[]> = {};
 
   await Promise.all(
-    Array.from(services.entries()).map(async ([tier, svc]) => {
+    ctx.user.accessibleTiers.map(async (tier: DataTier) => {
       const startTime = Date.now();
-
-      // --- The authorisation filter ---
-      //
-      // Applied INSIDE the query, to BOTH lanes. Restricted chunks are never
-      // fetched, so they cannot be leaked - not by a clever question, not by
-      // prompt injection, not by a bug in prompt assembly. Post-filtering
-      // would mean asking a 7B to keep a secret.
-      //
-      // Qdrant excludes points that lack the key, so a point ingested without
-      // access_labels is invisible to everyone. Fail-closed by construction.
-      const labelFilter = enforceLabels()
-        ? [{ key: "access_labels", match: { any: ctx.labels } }]
-        : [];
 
       // --- Prose lane: one search per query vector, then RRF fuse ---
       const proseLists = await Promise.all(
-        vectors.map((vector) =>
-          svc.qdrant.search(svc.qdrantCollection, {
-            vector,
-            limit: PROSE_TOP_K,
-            with_payload: true,
-            ...(labelFilter.length > 0 ? { filter: { must: labelFilter } } : {}),
-          }),
-        ),
+        vectors.map((vector) => vsearch.search({ tier, vector, limit: PROSE_TOP_K })),
       );
 
       const rankedLists: RankedItem<QdrantHit>[][] = proseLists.map((hits) =>
-        hits.map((h) => ({ id: String(h.id), item: h as QdrantHit })),
+        hits.map((h) => ({ id: String(h.id), item: h })),
       );
       const fused = fuse(rankedLists);
       const proseChunks = fused.slice(0, FUSED_PROSE_K).map((f) => hitToChunk(f.item));
@@ -129,20 +119,14 @@ export async function retrieve(state: AgentStateType): Promise<Partial<AgentStat
       // Guarantees table awareness regardless of prose ranking.
       //
       // A blurb is DISCLOSURE: it carries column names, complete value domains
-      // ("one of: Cascade, Denali, ..."), and observed ranges. The label filter
-      // must be must-combined here too, or the guaranteed lane hands every
-      // table's schema to every caller, by design.
+      // ("one of: Cascade, Denali, ..."), and observed ranges. `tableOnly` asks
+      // the server for has_structured_table points; the access-label filter is
+      // still AND-combined server-side, or the guaranteed lane would hand every
+      // table's schema to every caller.
       let tableChunks: RetrievedChunk[] = [];
       try {
-        const tableHits = await svc.qdrant.search(svc.qdrantCollection, {
-          vector: primaryVector,
-          limit: TABLE_TOP_K,
-          with_payload: true,
-          filter: {
-            must: [{ key: "has_structured_table", match: { value: true } }, ...labelFilter],
-          },
-        });
-        tableChunks = tableHits.map((h) => hitToChunk(h as QdrantHit));
+        const tableHits = await vsearch.search({ tier, vector: primaryVector, limit: TABLE_TOP_K, tableOnly: true });
+        tableChunks = tableHits.map((h) => hitToChunk(h));
       } catch (err) {
         console.warn(
           `retrieve: table-lane search failed (payload index missing?): ${err instanceof Error ? err.message : err}`,

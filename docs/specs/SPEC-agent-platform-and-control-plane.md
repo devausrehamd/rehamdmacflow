@@ -31,15 +31,17 @@ systems, is that **three planes must remain separate.**
 The Talk Agent queries Discovery and instructs the Supervisor. It never launches
 processes directly, and it never substitutes its own authority for the caller's.
 
-A second governing principle: **all database access is API-mediated.** Every read
-and every write — to Postgres and to Qdrant — passes through a REST API; no
-component holds a direct database client, and agents carry no database
-credentials. This holds even for a co-located ("local") database: the API is the
-single point at which permissions are filtered (`min(user, agent)`, §6), fields
-are redacted, and the access is audited, and it decouples every caller from
-storage so the database can be moved, sharded, replicated, or load-balanced
-without touching a caller. Structured reads already take this path (the read-only
-data API); the platform extends it to every store and every write.
+A second governing principle: **all request-path database access is API-mediated.**
+Every read and every write made while serving a request — to Postgres and to
+Qdrant — passes through a REST API; no request-path component holds a direct
+database client, and agents carry no database credentials. This holds even for a
+co-located ("local") database: the API is the single point at which permissions
+are filtered (`min(user, agent)`, §6), fields are redacted, and the access is
+audited, and it decouples every caller from storage so the database can be moved,
+sharded, replicated, or load-balanced without touching a caller. Structured reads
+already take this path (the read-only data API); the platform extends it to every
+store and every write on the request path. Offline corpus ingestion is the one
+deliberate exception — a trusted admin batch that writes directly (decision 13).
 
 ---
 
@@ -432,11 +434,23 @@ referenced from a manifest's `pipeline` — no new agent code.
 12. Decision branches are **retired, not deleted**: retirement is an append-only,
     gated `human_decision` recorded in custody; the branch and its trajectory are
     retained, and it is reversed only by a further recorded decision.
-13. **All database access is API-mediated** — every read and write, to Postgres
-    and Qdrant, goes through a REST API. No component holds a direct database
-    client and agents carry no database credentials, even against a local
-    database. The API is the permission-filter, redaction, and audit point, and
-    the decoupling point that permits load-balancing and relocation of storage.
+13. **All request-path database access is API-mediated** — every read and write
+    made while serving a request, to Postgres and Qdrant, goes through a REST API.
+    No request-path component holds a direct database client and agents carry no
+    database credentials, even against a local database. The API is the
+    permission-filter, redaction, and audit point, and the decoupling point that
+    permits load-balancing and relocation of storage. The scope is the untrusted,
+    per-request path: the agent role and the orchestrator handling a caller's
+    question.
+
+    **Exception — ingestion.** Corpus ingestion (`npm run ingest:repo`, the
+    Supervisor's ingest-to-ready path) writes Postgres and Qdrant directly. It is
+    a trusted, offline, admin-triggered batch that runs only when fired, never on
+    a request and never on caller input, so the properties the API exists to
+    provide — per-caller permission-filtering, redaction, and request-time audit —
+    do not apply to it, and bulk writes plus dynamic table DDL are ill-suited to a
+    per-request REST surface. Ingestion is a deliberate, privileged ETL boundary,
+    not a component of the request path this rule governs.
 
 ## 12. Open questions
 
@@ -467,11 +481,16 @@ referenced from a manifest's `pipeline` — no new agent code.
    exist.
 6. Converter registry and the first new converter (`html->md`).
 
-> **Refactor obligation (decision 13).** The stores built while bootstrapping the
-> earlier stages — artifacts, DAG History, custody, ingestion — currently write
-> Postgres directly, in-process. Each is refactored to sit behind its Data Access
-> API endpoint, and the agent role loses its direct database client, before those
-> stages are considered complete under this rule.
+> **Refactor obligation (decision 13) — completed.** The request-path stores that
+> earlier stages bootstrapped with direct, in-process writes were each moved behind
+> a Data Access API endpoint, and the agent role lost its direct database client:
+> custody (R1), the trace + DAG-History writes (R2), vector search (R3), and the
+> QueryRecord run state, with the `llm` client split out so it no longer drags in a
+> Qdrant client (R4). `scripts/smoke-test-agent-db-free.ts` walks the agent's
+> runtime import graph and fails if it reaches any Postgres/Qdrant/Redis client,
+> keeping the invariant true as the code grows. Ingestion is the deliberate
+> exception recorded in decision 13: a trusted offline batch, it retains its direct
+> writes and is out of scope for this obligation.
 
 ## Glossary
 - **Talk Agent / Orchestrator** — user-facing entry point; sole custody-chain writer.

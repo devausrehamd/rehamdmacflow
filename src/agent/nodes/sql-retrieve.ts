@@ -28,6 +28,7 @@ import {
 import { getTable, queryTable, DataApiError } from "../../data/client.js";
 import { custodyClient } from "../../data/custody-client.js";
 import { checkGrounding, fieldSummary, type GroundingIssue } from "../grounding.js";
+import { applicableDerivations } from "../derivations.js";
 
 interface BlurbRef {
   tableId: string;
@@ -114,8 +115,16 @@ export async function sqlRetrieve(state: AgentStateType): Promise<Partial<AgentS
       // Fetch the authoritative schema from the data API
       const detail = await getTable(authToken, tableId);
 
+      // QMS-defined terms for this table ("critical" -> score >= 16). Injected
+      // into the planner so an interpretive term is decoded from its definition
+      // instead of guessed; anything still undefined is caught by the gate below.
+      const definitions = applicableDerivations(question, detail.display_name, detail.columns);
+      if (definitions.length > 0) {
+        console.log(`[sql-retrieve] applying ${definitions.length} defined term(s): ${definitions.map((d) => d.term).join(", ")}`);
+      }
+
       // Plan the query
-      let queryReq = await planQuery(question, detail.columns);
+      let queryReq = await planQuery(question, detail.columns, definitions);
       console.log(`[sql-retrieve] planned query for ${tableId}: ${JSON.stringify(queryReq)}`);
 
       // Grounding gate: a filter whose value falls outside its column's domain is
@@ -133,7 +142,7 @@ export async function sqlRetrieve(state: AgentStateType): Promise<Partial<AgentS
           if (err instanceof DataApiError && err.status === 400) {
             console.log(`[sql-retrieve] query rejected (${err.message}), replanning...`);
             // Replan with the error, try once more
-            queryReq = await planQuery(question, detail.columns, err.message);
+            queryReq = await planQuery(question, detail.columns, definitions, err.message);
             console.log(`[sql-retrieve] replanned query: ${JSON.stringify(queryReq)}`);
             grounding = checkGrounding(queryReq, detail.columns);
             if (grounding.grounded) result = await queryTable(authToken, tableId, queryReq);

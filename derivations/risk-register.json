@@ -1,0 +1,18 @@
+{
+  "$comment": "QMS-owned definitions for interpretive terms in the Risk Register. This is the source of truth the planner consults before guessing (derivation registry, increment 2). The Risk Register has no severity column — 'critical'/'high' are conventions on the computed likelihood x impact `score` (domain 2..20). Edit these thresholds to match your QMS's risk policy; they are examples, not a standard. A term defined here is decoded to its exact filter; a term NOT defined here is called out by the grounding gate rather than guessed.",
+  "table": "Risk Register",
+  "derivations": [
+    {
+      "term": "critical",
+      "aliases": ["most severe", "top risk", "showstopper", "extreme risk"],
+      "predicate": { "column": "score", "op": "gte", "value": 16 },
+      "definition": "a critical risk is one whose score is 16 or higher (the top band of the 1-20 risk score)"
+    },
+    {
+      "term": "high or above",
+      "aliases": ["high and above", "high risk", "high priority", "high severity"],
+      "predicate": { "column": "score", "op": "gte", "value": 12 },
+      "definition": "high-or-above means a risk score of 12 or higher"
+    }
+  ]
+}

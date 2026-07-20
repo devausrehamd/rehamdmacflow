@@ -20,6 +20,7 @@ import { llm } from "../llm-client.js";
 import type { ColumnSchema } from "../data/table-schema.js";
 import type { QueryRequest } from "../data/query-builder.js";
 import { extractJson } from "./parse.js";
+import { definitionsBlock, type Derivation } from "./derivations.js";
 
 // ---- The gate ----
 
@@ -133,26 +134,40 @@ Question: "list the high-score risks"
 Question: "count risks per status"
 {"aggregate":{"fn":"count"},"group_by":["status"]}`;
 
-export async function planQuery(
+/** Build the planner prompt. Pure — the QMS-defined terms (if any) are injected
+ *  as authoritative so the model decodes "critical" to the declared filter rather
+ *  than guessing. Separated out so the injection is unit-testable without an LLM. */
+export function buildPlanPrompt(
   question: string,
   columns: ColumnSchema[],
+  definitions: Derivation[] = [],
   previousError?: string,
-): Promise<QueryRequest> {
+): string {
   const errorNote = previousError
     ? `\nYour previous attempt was rejected with this error:\n${previousError}\nFix the query to address it.\n`
     : "";
+  const defs = definitionsBlock(definitions);
+  const defsSection = defs ? `\n${defs}\n` : "";
 
-  const prompt = `Generate a structured query to answer the question using this table.
+  return `Generate a structured query to answer the question using this table.
 
 Table columns:
 ${schemaSummary(columns)}
 
 ${PLANNER_RULES}
-${errorNote}
+${defsSection}${errorNote}
 Question: ${question}
 
 Respond with ONLY the query JSON object, no other text.`;
+}
 
+export async function planQuery(
+  question: string,
+  columns: ColumnSchema[],
+  definitions: Derivation[] = [],
+  previousError?: string,
+): Promise<QueryRequest> {
+  const prompt = buildPlanPrompt(question, columns, definitions, previousError);
   const response = await llm.invoke(prompt);
   const parsed = extractJson(String(response.content)) as QueryRequest;
   return parsed;

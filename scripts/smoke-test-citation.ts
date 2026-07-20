@@ -10,7 +10,13 @@
 //
 // Usage: npm run smoke:citation
 
-import { hasPlaceholderCitation, repairCitation, expandSourceCitations } from "../src/agent/prompts.js";
+import {
+  hasPlaceholderCitation,
+  repairCitation,
+  expandSourceCitations,
+  hasValuePlaceholder,
+  stripSelfInstructions,
+} from "../src/agent/prompts.js";
 
 const GREEN = "\x1b[0;32m";
 const RED = "\x1b[0;31m";
@@ -80,6 +86,23 @@ function main(): void {
   check(
     "an out-of-range source number is left as-is",
     expandSourceCitations("[Source 9]", ordered) === "[Source 9]",
+  );
+
+  // --- Value placeholders are detected, real figures are not ---
+  check("detects a value placeholder", hasValuePlaceholder("there are [number of critical risks] critical risks"));
+  check("detects [count]", hasValuePlaceholder("total: [count]"));
+  check("a stated figure is not a placeholder", !hasValuePlaceholder("there are 5 critical risks"));
+  check("a real source citation is not a value placeholder", !hasValuePlaceholder("[Source 8: risks.xlsx]"));
+
+  // --- Self-directed meta-instructions are stripped, real prose survives ---
+  const leaked =
+    'Based on the Risk Register, there are 5 critical risks.\n\n[Ensure to replace "[number of critical risks]" with the exact number from the source.]';
+  const stripped = stripSelfInstructions(leaked);
+  check("strips the leaked meta-instruction line", !stripped.includes("Ensure to replace"));
+  check("  keeps the real answer", stripped.includes("there are 5 critical risks"));
+  check(
+    "leaves an ordinary sentence using 'replace' alone",
+    stripSelfInstructions("We replace the seal every year.") === "We replace the seal every year.",
   );
 
   console.log("");

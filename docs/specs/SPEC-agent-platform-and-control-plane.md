@@ -54,8 +54,9 @@ flowchart TB
   agents -->|content-addressed artifacts| store[("Artifact store")]
   cfg[("Git: manifests, catalog, rubrics - tagged")] -.->|pinned commit| sup
   cfg -.-> talk
-  disc -->|live and ready state| gui["GUI - system status console"]
+  disc -->|live and ready state| gui["GUI - operator surface"]
   sup -->|launch and lifecycle state| gui
+  gui -.->|governance actions - retire, disposition| talk
 ```
 
 - **Talk Agent (orchestrator)** — user-facing entry point. Classifies the request
@@ -70,10 +71,13 @@ flowchart TB
   applies a **TTL idle-destroy policy** (§5). It is separate from Discovery
   deliberately: it has a distinct failure mode (launching processes) from a
   registry (recording liveness).
-- **GUI** — the system-status console (existing client, extended). Renders the
-  state of the network from Discovery (which agents are live and `ready`) and the
-  Supervisor (launch and lifecycle state); read-only observability, no control
-  authority.
+- **GUI** — the operator surface (existing client, extended). It renders network
+  and system status from Discovery (which agents are live and `ready`) and the
+  Supervisor (launch and lifecycle state) as **read-only** observability. It also
+  issues **governance actions** on the run record — review disposition and the
+  **retirement of decision branches** (§7) — each custody-recorded and gated.
+  Process control (start and stop of agents) remains with the Supervisor; the GUI
+  does not launch or terminate processes.
 - **ID Server** — identity and entitlements (existing). Signs the login JWT; agents
   verify it and resolve entitlements per request.
 - **Provenance API** — durable mirror of the custody **chain** (existing, as the
@@ -289,9 +293,23 @@ In existing code, `agent_run_steps` and `recordRunStep` already write trajectory
 per-step to *local* Postgres, which `sink.ts` explicitly designates ephemeral.
 This adds the external mirror, exactly as the chain already has one.
 
----
+### Decision branches & retirement
 
-## 8. Deduplication
+A run is a DAG, and it **branches** wherever it diverges into alternatives: a
+k-sampling candidate set, a fan-out to several capabilities that return competing
+artifacts, a re-run after a rejected draft, or a superseded document version. Each
+alternative is a branch of the decision DAG.
+
+The custody chain is append-only, so a branch is never deleted — deletion would
+break tamper-evidence and the audit trail a QMS requires. A branch is instead
+**retired**: a governed action, initiated from the GUI, that marks the branch
+superseded so that it is no longer active, no longer consumed by downstream steps,
+and no longer presented as current. Retirement is itself a `human_decision` event
+recording the actor, the time, and the reason; the branch and its trajectory
+remain in the record. This reconciles the two requirements — retain the evidence of
+what was attempted and abandoned, and close the decision so the active set stays
+clean. Retirement is gated (approver ≠ author, as with approval) and is reversed
+only by a further recorded decision, never by erasure.
 
 Two distinct concerns; addressing one does not address the other.
 
@@ -380,7 +398,11 @@ referenced from a manifest's `pipeline` — no new agent code.
 10. Capability selection traverses the catalog and selects the **closest one or
     more capabilities** to the request; multiple selections fan out.
 11. The **GUI** renders network and system status from Discovery and the
-    Supervisor; it is read-only observability, not a control surface.
+    Supervisor as read-only observability, and issues custody-recorded, gated
+    governance actions on the run record; it never performs process control.
+12. Decision branches are **retired, not deleted**: retirement is an append-only,
+    gated `human_decision` recorded in custody; the branch and its trajectory are
+    retained, and it is reversed only by a further recorded decision.
 
 ## 12. Open questions
 

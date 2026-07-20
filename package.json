@@ -43,7 +43,7 @@
     "smoke:custody": "tsx scripts/smoke-test-custody.ts",
     "integration:custody-e2e": "QMS_QDRANT_COLLECTION_OVERRIDE=qms_custody_e2e tsx scripts/smoke-test-e2e.ts",
     "integration:denied": "tsx scripts/smoke-test-denied.ts",
-    "integration": "npm run integration:denied && npm run integration:agent && npm run integration:hybrid && npm run integration:custody-e2e",
+    "integration": "npm run integration:denied && npm run integration:manifest && npm run integration:agent && npm run integration:hybrid && npm run integration:custody-e2e",
     "smoke:section": "tsx scripts/smoke-test-section.ts",
     "smoke:scoring": "tsx scripts/smoke-test-scoring.ts",
     "smoke:executor": "tsx scripts/smoke-test-executor.ts",
@@ -51,7 +51,9 @@
     "smoke:review": "tsx scripts/smoke-test-review.ts",
     "smoke:rubric-api": "tsx scripts/smoke-test-rubric-api.ts",
     "smoke:batch": "tsx scripts/smoke-test-batch.ts",
-    "api:debug": "QMS_MODE=debug API_PORT=4001 QMS_AGENT_ADDRESS=http://localhost:4001 npm run api"
+    "api:debug": "QMS_MODE=debug API_PORT=4001 QMS_AGENT_ADDRESS=http://localhost:4001 npm run api",
+    "smoke:manifest": "tsx scripts/smoke-test-manifest.ts",
+    "integration:manifest": "tsx scripts/smoke-test-manifest-live.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.1.48",

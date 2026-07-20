@@ -13,7 +13,13 @@
 import { llm } from "../../llm-client.js";
 import { QueryRecord } from "../../queries.js";
 import type { AgentStateType } from "../state.js";
-import { buildReconciliationPrompt, repairCitation, expandSourceCitations } from "../prompts.js";
+import {
+  buildReconciliationPrompt,
+  repairCitation,
+  expandSourceCitations,
+  stripSelfInstructions,
+  hasValuePlaceholder,
+} from "../prompts.js";
 
 export async function reconcile(state: AgentStateType): Promise<Partial<AgentStateType>> {
   const { ctx, queryId, question, partialsByTier } = state;
@@ -41,8 +47,24 @@ export async function reconcile(state: AgentStateType): Promise<Partial<AgentSta
   const sourcePaths = tierChunkLists.flat().map((c) => c.source_path).filter((p): p is string => Boolean(p));
   const orderedSources = tierChunkLists.length === 1 ? tierChunkLists[0]!.map((c) => c.source_path) : [];
 
-  let finalAnswer = repairCitation(String(response.content), sourcePaths);
-  finalAnswer = expandSourceCitations(finalAnswer, orderedSources);
+  // Clean one answer string through every deterministic net: real citations,
+  // source paths expanded, and self-directed meta-instructions removed.
+  const clean = (text: string): string =>
+    stripSelfInstructions(expandSourceCitations(repairCitation(text, sourcePaths), orderedSources));
+
+  let finalAnswer = clean(String(response.content));
+
+  // A value slot that survived ("there are [number of critical risks] risks")
+  // means the polish dropped a figure it was given. In the single-tier case the
+  // partial was generated straight from the exact data - prefer it when it is
+  // clean, rather than hand the reader a template.
+  if (hasValuePlaceholder(finalAnswer) && tierChunkLists.length === 1) {
+    const partial = Object.values(partialsByTier)[0];
+    if (partial) {
+      const cleanedPartial = clean(partial);
+      if (!hasValuePlaceholder(cleanedPartial)) finalAnswer = cleanedPartial;
+    }
+  }
 
   // setFinalAnswer also marks the query as "complete"
   await queryRecord.setFinalAnswer(finalAnswer, latency);

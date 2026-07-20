@@ -1,35 +1,35 @@
 # SPEC — Agent platform & control plane (AgentAsSoftware)
 
-**Status:** Design / thinking — not yet implemented · **Audience:** Dion + Claude Code
+**Status:** Design — not yet implemented · **Audience:** Engineering / implementation
 **Builds on:** [`SPEC-agent-topology-and-custody-dag.md`](SPEC-agent-topology-and-custody-dag.md)
 (Phases 1–6: content-addressed artifacts, custody DAG, capability dispatch,
-readiness gate, exporter/actioner). This doc adds the **control plane** that turns
-those in-process roles into real, configured, remote agents.
+readiness gate, exporter/actioner). This document specifies the **control plane**
+that turns those in-process roles into configured, remote agents.
 
-This is a reference to refine, not a build order. Where it says "the agent does
-X," that is the target design; the current code does most of it in-process.
+This is a design reference, not a build order. Where it states "the agent does X,"
+that is the target design; the current code performs most of it in-process.
 
 ---
 
-## 1. The idea — AgentAsSoftware
+## 1. Concept — AgentAsSoftware
 
 An agent is a **generic runtime that specialises itself at boot from versioned
-config**, advertises what it can do, and is composed by an orchestrator per a
+config**, advertises its capabilities, and is composed by an orchestrator per a
 recipe. Behaviour is declarative: the same binary becomes `research:qms` or
-`export:docx` depending on the JSON it loads. Config is code — versioned in git,
-pinned per run, recorded in custody.
+`export:docx` according to the configuration it loads. Configuration is code —
+versioned in git, pinned per run, recorded in custody.
 
-The non-negotiable principle, because it is where distributed agent systems rot:
-**keep three planes separate.**
+The governing principle, and the primary failure point in distributed agent
+systems, is that **three planes must remain separate.**
 
 | Plane | Question | Owner |
 |---|---|---|
-| **Discovery** | who is alive, where, ready? | Discovery (registry — exists) |
+| **Discovery** | Which agents are live, at which address, and ready? | Discovery (registry — existing) |
 | **Supervision** | start / stop / health / ingest-to-ready | **Supervisor** (new) |
-| **Authority** | whose permissions apply to this data access? | ID Server + the caller's token |
+| **Authority** | Whose permissions apply to a given data access? | ID Server + the caller's token |
 
-The Talk Agent asks Discovery and asks the Supervisor; it never launches
-processes itself, and it never substitutes its own authority for the user's.
+The Talk Agent queries Discovery and instructs the Supervisor. It never launches
+processes directly, and it never substitutes its own authority for the caller's.
 
 ---
 
@@ -56,29 +56,32 @@ flowchart TB
   cfg -.-> talk
 ```
 
-- **Talk Agent (orchestrator)** — user-facing front door. Classifies the ask to a
-  task, resolves the recipe → required capabilities, ensures agents are running,
-  dispatches per the recipe, writes the custody chain, runs rubrics, gates on a
-  human. The **only** custody-chain writer.
-- **Discovery** — passive registry (exists). Agents self-register + heartbeat
-  leases. Extended to report **`ready`** (ingested + serving) vs merely **`up`**.
-- **Supervisor** — the launch plane (new). Knows how to start each agent (command,
-  resources, which config tag), drives it to `ready`, applies idle/destroy policy.
-- **ID Server** — identity + entitlements (exists). Signs the login JWT; agents
+- **Talk Agent (orchestrator)** — user-facing entry point. Classifies the request
+  to a task, resolves the recipe → required capabilities, ensures agents are
+  running, dispatches per the recipe, writes the custody chain, runs rubrics, and
+  gates on human review. The **only** custody-chain writer.
+- **Discovery** — passive registry (existing). Agents self-register and hold
+  heartbeat leases. Extended to report **`ready`** (ingested and serving) versus
+  merely **`up`**.
+- **Supervisor** — the launch plane (new). Determines how to start each agent
+  (command, resources, config tag), drives it to `ready`, and applies the
+  idle/destroy policy.
+- **ID Server** — identity and entitlements (existing). Signs the login JWT; agents
   verify it and resolve entitlements per request.
-- **Provenance API** — durable mirror of the custody **chain** (exists as the
+- **Provenance API** — durable mirror of the custody **chain** (existing, as the
   `http` sink in `custody/sink.ts`).
 - **DAG History endpoint** — durable, write-ahead store of per-agent **trajectory**
-  (new; §7). Peer service, independent lifecycle.
+  (new; §7). A peer service with an independent lifecycle.
 - **Artifact store** — content-addressed artifacts (`custody_artifacts`, Phase 1).
 
 ---
 
 ## 3. Three config domains (all git-tagged)
 
-Don't cram everything into one `agents.json`; these version and govern differently.
+These are not consolidated into a single `agents.json`: they version and govern
+differently.
 
-### 3a. Task catalog — what the Talk Agent can do
+### 3a. Task catalog — the tasks the Talk Agent can perform
 ```jsonc
 {
   "id": "capa",
@@ -101,7 +104,7 @@ Don't cram everything into one `agents.json`; these version and govern different
   "exportFormats": ["md", "docx"]
 }
 ```
-This is today's rubric-`recipe` promoted to a first-class, user-visible catalog.
+This is the existing rubric-`recipe`, promoted to a first-class, user-visible catalog.
 
 ### 3b. Agent manifest — one `init.json` per agent (git tag = agent name)
 ```jsonc
@@ -127,8 +130,9 @@ This is today's rubric-`recipe` promoted to a first-class, user-visible catalog.
 ```
 
 ### 3c. Rubric repo — judgment, tagged
-Own git repo of rubric JSON, referenced by `name@tag` from the catalog. Extends the
-existing `rubric-release.ts` "Update from git". A run pins the resolved commit.
+A dedicated git repo of rubric JSON, referenced by `name@tag` from the catalog.
+Extends the existing `rubric-release.ts` "Update from git". Each run pins the
+resolved commit.
 
 ---
 
@@ -159,81 +163,86 @@ sequenceDiagram
   T-->>U: answer with provenance, or missing-input, or denied
 ```
 
-Maps your steps 1–9. The classification in step 1 is the **new non-deterministic
-seam** — bracket it like the thinker: deterministic catalog match first, LLM only
-to disambiguate, and confirm the plan before the expensive fan-out.
+Maps steps 1–9. The classification in step 1 is the **non-deterministic seam** and
+must be bracketed as the thinker is: a deterministic catalog match first, the LLM
+only to disambiguate, and confirmation of the plan before the fan-out is spent.
 
 ---
 
 ## 5. Agent lifecycle — creation & destruction
 
-**Separate the process lifecycle from the data lifecycle.** Killing a research
-agent must not destroy what it ingested.
+**The process lifecycle and the data lifecycle are separate.** Terminating a
+research agent must not destroy its ingested state.
 
 States: `launching → configuring → ingesting → ready → (serving⇄idle) → draining → stopped`.
 
 **Creation** (Supervisor):
-1. Resolve the manifest at its git tag → pin the commit.
-2. Launch the runtime with config + injected secrets (service token, JWT secret).
-3. Agent runs its ingestion pipeline **to `ready`** (idempotent + incremental —
-   re-ingest only deltas by source-sha; reuse persistent state so a relaunch is
-   *warm*, not a cold multi-minute re-ingest).
-4. Register with Discovery advertising `ready` + capabilities + `configCommit`.
+1. Resolve the manifest at its git tag and pin the commit.
+2. Launch the runtime with configuration and injected secrets (service token, JWT
+   secret).
+3. The agent runs its ingestion pipeline **to `ready`** — idempotent and
+   incremental, re-ingesting only deltas by source-sha, and reusing persistent
+   state so that a relaunch is *warm* rather than a cold multi-minute re-ingest.
+4. Register with Discovery, advertising `ready`, capabilities, and `configCommit`.
 
 **Destruction:**
-- **Graceful** (idle policy, or explicit stop): Supervisor sends `SIGTERM` →
-  agent **drains** (finish in-flight, flush trajectory tail + write the terminal
-  marker, deregister from Discovery) → exit. Ingested state persists.
-- **Crash / SIGKILL / OOM:** no graceful path. Discovery's lease **expires** →
-  agent drops from the live list. Reconciliation reads the DAG History: last step
-  with no terminal marker = "died mid-op at step N" (§7). Supervisor may relaunch;
-  because ingestion state is persistent, relaunch is warm.
+- **Graceful** (idle policy, or explicit stop): the Supervisor sends `SIGTERM`; the
+  agent **drains** — completes in-flight work, flushes the trajectory tail, writes
+  the terminal marker, deregisters from Discovery — and exits. Ingested state
+  persists.
+- **Crash / SIGKILL / OOM:** no graceful path. The Discovery lease **expires** and
+  the agent is dropped from the live list. Reconciliation reads the DAG History:
+  the last step with no terminal marker indicates termination mid-operation at step
+  N (§7). The Supervisor may relaunch; because ingestion state is persistent, the
+  relaunch is warm.
 
-**Warm pool vs on-demand:** keep the common agents (qms research, the thinker)
-warm to avoid cold-start latency on the first `/ask`; launch rare ones on demand.
-The Talk Agent always waits for **`ready`**, never merely `up`.
+**Warm pool versus on-demand:** the common agents (QMS research, the thinker) are
+kept warm to avoid cold-start latency on the first `/ask`; rare agents are launched
+on demand. The Talk Agent always waits for **`ready`**, never merely `up`.
 
 ---
 
 ## 6. Authority — JWT propagation & the confused-deputy rule
 
-**The caller's JWT flows with every dispatch.** This is the single most important
-security property, and it dictates that **each agent's config carries the ID
-Server address** (your point).
+**The caller's JWT accompanies every dispatch.** This is the primary security
+property, and it requires that **each agent's config carry the ID Server address.**
 
-On each dispatched task an agent:
+On each dispatched task, an agent:
 1. **Verifies the caller's JWT** — signature (shared `JWT_SECRET` or the ID
-   Server's JWKS), **issuer** (accept `rehamd-idserver`), expiry. Config supplies
-   `identity.idServerUrl` + `identity.issuer`; the secret is injected, never in git.
+   Server's JWKS), **issuer** (accepting `rehamd-idserver`), and expiry.
+   Configuration supplies `identity.idServerUrl` and `identity.issuer`; the secret
+   is injected, never committed to git.
 2. **Resolves entitlements per request** against the ID Server (revocable — a
-   cached label can't outlive a revocation).
+   cached label cannot outlive a revocation).
 3. **Bounds every data access to `min(user, agent)`.** The manifest `permissions`
-   (may be `"all"`) is the agent's *maximum operational scope*; effective access is
-   the **intersection with the user's entitlements**. An agent must NEVER use its
-   own service identity to fetch data it returns to a user — that is the
-   confused-deputy hole, and `"all"` makes it a chasm. The service identity is for
-   boot / register / read-own-config only.
+   (which may be `"all"`) is the agent's *maximum operational scope*; effective
+   access is the **intersection with the user's entitlements**. An agent must never
+   use its own service identity to fetch data returned to a user: that is the
+   confused-deputy vulnerability, which `"all"` maximises. The service identity is
+   for boot, registration, and reading its own configuration only.
 
-This is exactly the http-identity-mode path the integration tests already exercise
+This is the http-identity-mode path exercised by the integration tests
 (`QMS_IDENTITY_MODE=http`, `QMS_IDENTITY_URL`, `IDSERVER_SERVICE_TOKEN`,
-`config.api.identityIssuer`). The manifest formalises what is in `.env` today.
+`config.api.identityIssuer`). The manifest formalises what currently resides in
+`.env`.
 
 ---
 
 ## 7. Custody chain + trajectory history (durability)
 
-Two records, two guarantees — do not conflate them.
+Two records, two guarantees; they must not be conflated.
 
 | | **Custody chain** | **Trajectory history** |
 |---|---|---|
-| Question | what data flowed *between* agents? | what did each agent do *internally*, and where did it stop? |
+| Question | What data flowed *between* agents? | What did each agent do *internally*, and where did it stop? |
 | Guarantee | tamper-evident, authoritative | complete, durable, forensic |
 | Writer | **orchestrator only** (single-writer) | **each agent, its own lane** |
 | Store | `custody_events` + Provenance API mirror | **DAG History endpoint** (new) |
 
 **Write-ahead, not write-on-shutdown.** Each step appends to the History endpoint
-**as it completes** — that is the durability guarantee; a `SIGKILL`/OOM/power-loss
-skips any shutdown handler, so a shutdown flush is *cleanup*, never the guarantee.
+**as it completes**, and that is the durability guarantee. A `SIGKILL`, OOM, or
+power loss skips any shutdown handler, so a shutdown flush is cleanup, never the
+guarantee.
 
 Per-step record (immutable):
 ```
@@ -247,129 +256,138 @@ TrajectoryStep {
   error?,  at
 }
 ```
-Terminal record on completion (good **or** bad):
+Terminal record on completion (success or failure):
 `{ correlationId, agentGuid, outcome: "completed"|"failed"|"shutdown", finalRef?, reason? }`.
 
-**Idempotent + append-only on `(correlationId, agentGuid, seq)`** — because the
-agent-side local WAL retries when the endpoint blips, the same step will POST
-twice; a duplicate is a no-op (a `unique` constraint). `seq` is per-agent, so no
-two writers ever contend — that is what makes multi-writer safe. Cross-agent order
-is the artifact-hash DAG the chain already holds.
+**Idempotent and append-only on `(correlationId, agentGuid, seq)`.** Because the
+agent-side local WAL retries when the endpoint is briefly unavailable, a step may
+be posted twice; a duplicate is a no-op (a `unique` constraint). `seq` is
+per-agent, so no two writers contend — which is what makes multi-writer safe.
+Cross-agent order is provided by the artifact-hash DAG the chain already holds.
 
-What it buys: **where did it die** (last non-terminal `seq` + expired lease),
-**did it consult the required source** (the auto-fail trajectory rubric, now from a
-durable store), and **can it resume** (replay from the last `ok` step with an
-`outputRef` + the content-addressed artifact — the atomicity answer).
+This provides three capabilities, each a single query on `correlationId`:
+**where a run terminated** (the last non-terminal `seq` plus an expired lease),
+**whether the required source was consulted** (the auto-fail trajectory rubric,
+now sourced from a durable store), and **whether a run can resume** (replay from
+the last `ok` step with an `outputRef` and its content-addressed artifact — the
+atomicity property).
 
-Grounded in existing code: `agent_run_steps` + `recordRunStep` already write
-trajectory per-step to *local* Postgres, which `sink.ts` explicitly calls
-ephemeral. This adds the external mirror, exactly as the chain already has one.
+In existing code, `agent_run_steps` and `recordRunStep` already write trajectory
+per-step to *local* Postgres, which `sink.ts` explicitly designates ephemeral.
+This adds the external mirror, exactly as the chain already has one.
 
 ---
 
 ## 8. Deduplication
 
-Two distinct concerns; don't solve one and think you solved both.
+Two distinct concerns; addressing one does not address the other.
 
-**8a. Caller idempotency — same request twice.** A retry or double-submit must not
-do the work twice. The `/ask` carries an **idempotency key** (client-supplied, or
-the hash of `{userId, normalized question, task}`). Before executing, look up the
-custody/result store for a completed run under that key → return the cached result
-+ its provenance. Cheap, and it also makes the whole route safely retryable.
+**8a. Caller idempotency — the same request submitted twice.** A retry or
+double-submit must not perform the work twice. The `/ask` carries an **idempotency
+key** (client-supplied, or the hash of `{userId, normalized question, task}`).
+Before execution, the custody/result store is consulted for a completed run under
+that key; if present, the cached result and its provenance are returned. This is
+inexpensive and makes the route safely retryable.
 
-**8b. Result dedup / merge across agents.** When several researchers return
-overlapping findings:
-- **Identical content collapses for free** — content-addressing (Phase 1): same
-  bytes → one artifact hash. No work.
-- **Semantically overlapping** findings (web + qms return the same fact, worded
-  differently) need a **merge step**, declared in the recipe so it is auditable.
-  Deterministic where possible (dedupe by `(sourceRef, claim-key)`); an LLM merge
-  only where structure can't decide, and even then its output is validated. Keep
-  it a real step (`kind: "merge"`) before the thinker, not hidden inside it.
+**8b. Result deduplication and merge across agents.** Where several researchers
+return overlapping findings:
+- **Identical content collapses without additional work** — content-addressing
+  (Phase 1): identical bytes yield one artifact hash.
+- **Semantically overlapping** findings (web and QMS returning the same fact,
+  worded differently) require a **merge step**, declared in the recipe so that it
+  is auditable. Deterministic where possible (deduplication by
+  `(sourceRef, claim-key)`); an LLM merge only where structure cannot decide, and
+  its output validated in that case. It is a distinct step (`kind: "merge"`)
+  preceding the thinker, not embedded within it.
 
 ---
 
 ## 9. Config as git tags
 
-`qms-eng-research` as a bare tag is a *mutable pointer* — fine for "latest config,"
-fatal for reproducibility. So:
-- Config repos with a path per agent / rubric; **immutable release tags**
+`qms-eng-research` as a bare tag is a *mutable pointer* — acceptable for "latest
+config" but fatal for reproducibility. Therefore:
+- Config repos with a path per agent and per rubric, and **immutable release tags**
   (`qms-eng-research@2026.02`).
-- Launch resolves name → latest release; the run **pins the resolved commit hash
-  into custody**. "Regenerate this exact document" replays the pinned commit.
-- Governs like rubrics already do: humans push tags; the GUI never deploys.
+- Launch resolves the name to the latest release; the run **pins the resolved
+  commit hash into custody**. Regenerating a specific document replays the pinned
+  commit.
+- Governed as rubrics are: humans push tags; the GUI never deploys.
 
 ---
 
 ## 10. Extensibility — pluggable ingestion converters
 
-Ingestion is code-heavy and the place you want to grow (HTML docs, web search →
-MD, web search → natural language). Model it as a **registry of typed converters**,
-so growth is *config + a new converter*, never core surgery.
+Ingestion is code-heavy and the primary area of planned extension (HTML documents,
+web-search → Markdown, web-search → natural language). It is modelled as a
+**registry of typed converters**, so that extension is *configuration plus a new
+converter*, never modification of the core.
 
 ```
 Converter { from: <mime/type>, to: <mime/type>, run(input, ctx): output }
 ```
 A source's `pipeline` is a chain of converter ids; the runtime resolves each by
-`(from → to)`. Your roadmap becomes registered converters:
+`(from → to)`. The planned extensions become registered converters:
 
 | Converter | from → to | Notes |
 |---|---|---|
 | `docx->md` | Word → Markdown | exists (renderer) |
-| `html->md` | HTML → Markdown | **new** — readability extract then serialise |
-| `websearch->md` | search results → Markdown | **new** — fetch + `html->md` per hit |
-| `websearch->nl` | search results → natural-language summary | **new** — LLM step; its output validated, sourceRef pinned |
+| `html->md` | HTML → Markdown | **new** — readability extract, then serialise |
+| `websearch->md` | search results → Markdown | **new** — fetch, then `html->md` per hit |
+| `websearch->nl` | search results → natural-language summary | **new** — LLM step; output validated, sourceRef pinned |
 | `xlsx->table` | spreadsheet → structured rows | exists (table-loader) |
 
-Two rules keep this clean: a converter is **pure `input → output`** (testable with
-golden files, like the exporter), and **any LLM-bearing converter (e.g.
-`websearch->nl`) records a `sourceRef`** so a generated summary is never mistaken
-for a retrieved fact. New capability = register a converter + reference it in a
-manifest's `pipeline`. No new agent code.
+Two constraints preserve this model: a converter is **pure `input → output`**
+(testable with golden files, as the exporter is), and **any LLM-bearing converter
+(for example `websearch->nl`) records a `sourceRef`**, so that a generated summary
+is never mistaken for a retrieved fact. A new capability is a registered converter
+referenced from a manifest's `pipeline` — no new agent code.
 
 ---
 
 ## 11. Locked decisions
 
-1. Three planes stay separate: Discovery (registry) ≠ Supervisor (launch) ≠ ID
-   Server (authority). The Talk Agent orchestrates; it never launches or
-   substitutes authority.
+1. The three planes remain separate: Discovery (registry) ≠ Supervisor (launch) ≠
+   ID Server (authority). The Talk Agent orchestrates; it never launches processes
+   or substitutes authority.
 2. The **caller's JWT propagates**; data access is `min(user, agent)`; each agent's
    config carries the ID Server address. `"all"` is scope, not a bypass.
-3. Trajectory is **write-ahead** to a durable History endpoint; shutdown flush is
-   cleanup. Idempotent on `(correlationId, agentGuid, seq)`.
-4. Custody chain stays **single-writer** (orchestrator); trajectory is multi-writer,
-   per-agent lane. Different guarantees, joined by the artifact hash.
-5. Config + rubrics are git, **immutable release tags**, pinned per run.
-6. Process lifecycle ≠ data lifecycle: destroying an agent never destroys its
-   ingested state; relaunch is warm.
-7. Ingestion is a **registry of pure typed converters**; extensibility = new
-   converter + config.
+3. Trajectory is **write-ahead** to a durable History endpoint; the shutdown flush
+   is cleanup. Idempotent on `(correlationId, agentGuid, seq)`.
+4. The custody chain remains **single-writer** (orchestrator); trajectory is
+   multi-writer, per-agent lane. Different guarantees, joined by the artifact hash.
+5. Config and rubrics are git, **immutable release tags**, pinned per run.
+6. The process lifecycle is distinct from the data lifecycle: destroying an agent
+   never destroys its ingested state; a relaunch is warm.
+7. Ingestion is a **registry of pure typed converters**; extension is a new
+   converter plus configuration.
 
 ## 12. Open questions
 
-- **Supervisor placement** — co-located with Discovery, or its own service? (Leaning
-  own service; it has a distinct failure mode.)
-- **Idle-destroy policy** — TTL, or LRU under a resource cap? Who sets it (manifest
-  vs global)?
+- **Supervisor placement** — co-located with Discovery, or a separate service?
+  (A separate service is preferred; it has a distinct failure mode.)
+- **Idle-destroy policy** — TTL, or LRU under a resource cap? Set per manifest or
+  globally?
 - **Result store for §8a idempotency** — reuse custody keyed by correlation, or a
   dedicated results cache with its own TTL?
-- **Converter sandboxing** — `html->md` / `websearch->*` fetch untrusted content;
-  network + parser isolation, and treating fetched content as data-not-instructions.
-- **Talk-agent classification** — how much LLM vs a deterministic catalog matcher.
+- **Converter sandboxing** — `html->md` and `websearch->*` fetch untrusted content;
+  network and parser isolation, and treatment of fetched content as data, not
+  instructions.
+- **Talk-agent classification** — the balance between LLM classification and a
+  deterministic catalog matcher.
 
-## 13. Sequencing (when you build)
+## 13. Implementation sequence
 
-1. Remote `CapabilityRegistry` backed by Discovery (the Phase 5 seam → real).
-2. Agent manifest + boot-from-git-tag + self-register(`ready`).
-3. DAG History endpoint + write-ahead mirror of `recordRunStep`.
-4. Supervisor (ensure-running + ingest-to-ready + idle policy).
-5. Talk Agent (classify → confirm → orchestrate) — last, once its pieces exist.
-6. Converter registry + the first new converter (`html->md`).
+1. Remote `CapabilityRegistry` backed by Discovery (the Phase 5 seam made real).
+2. Agent manifest, boot-from-git-tag, and self-registration (`ready`).
+3. DAG History endpoint and the write-ahead mirror of `recordRunStep`.
+4. Supervisor (ensure-running, ingest-to-ready, idle policy).
+5. Talk Agent (classify → confirm → orchestrate), last, once its dependencies
+   exist.
+6. Converter registry and the first new converter (`html->md`).
 
 ## Glossary
-- **Talk Agent / Orchestrator** — user-facing front door; sole custody-chain writer.
-- **Supervisor** — launches/stops agents, drives ingestion to `ready`.
+- **Talk Agent / Orchestrator** — user-facing entry point; sole custody-chain writer.
+- **Supervisor** — launches and stops agents, drives ingestion to `ready`.
 - **Manifest (`init.json`)** — an agent's declarative config, git-tagged by name.
 - **Capability** — a stable id (`research:qms`) an agent advertises and a step requires.
 - **DAG History** — durable, write-ahead, per-agent trajectory store.

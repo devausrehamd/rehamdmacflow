@@ -1,0 +1,19 @@
+{
+  "name": "qms-eng-research",
+  "role": "researcher",
+  "capabilities": ["research:qms"],
+  "identity": {
+    "idServerUrl": "http://localhost:3001",
+    "issuer": "rehamd-idserver",
+    "serviceTokenEnv": "IDSERVER_SERVICE_TOKEN"
+  },
+  "permissions": "engineering:internal",
+  "ingestion": {
+    "sources": [
+      { "uri": "git://qms-corpus@2026.02/08_Governance", "pipeline": ["docx->md", "chunk", "embed"] }
+    ],
+    "schedule": "on-boot",
+    "state": "persistent"
+  },
+  "resources": { "cpu": 2, "memoryMb": 4096 }
+}

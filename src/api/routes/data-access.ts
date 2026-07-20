@@ -300,3 +300,46 @@ dataAccessRouter.post("/api/v1/data/vector-search", requireAuth, async (req, res
     next(err);
   }
 });
+
+// ----- Query records (decision-13 refactor R4) -----
+//
+// QueryRecord (the per-request run state) used to reach the caller's tier Redis
+// directly. It now GET/PUTs here. The Redis instance is resolved from the token's
+// tier server-side, so a caller reaches only its own tier's store. The record is
+// an opaque JSON blob to this endpoint; its shape is QueryRecord's concern.
+
+const RECORD_KEY = (id: string) => `qms:queries:${id}`;
+
+dataAccessRouter.get("/api/v1/data/query-records/:id", requireAuth, async (req, res, next) => {
+  try {
+    const { redis } = getTierServices(req.ctx!.user.tier);
+    const raw = await redis.get(RECORD_KEY(String(req.params.id)));
+    if (!raw) {
+      res.status(404).json({ error: "Query record not found." });
+      return;
+    }
+    res.json({ data: JSON.parse(raw) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const queryRecordBody = z.object({
+  data: z.record(z.unknown()),
+  ttlSeconds: z.number().int().positive(),
+});
+
+dataAccessRouter.put("/api/v1/data/query-records/:id", requireAuth, async (req, res, next) => {
+  try {
+    const parsed = queryRecordBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid query record.", issues: parsed.error.errors });
+      return;
+    }
+    const { redis } = getTierServices(req.ctx!.user.tier);
+    await redis.set(RECORD_KEY(String(req.params.id)), JSON.stringify(parsed.data.data), "EX", parsed.data.ttlSeconds);
+    res.status(201).json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});

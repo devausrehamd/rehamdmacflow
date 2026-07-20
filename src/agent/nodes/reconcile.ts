@@ -10,7 +10,7 @@
 // This is the node that writes the final answer to the QueryRecord and
 // marks the query complete.
 
-import { llm } from "../../clients.js";
+import { llm } from "../../llm-client.js";
 import { QueryRecord } from "../../queries.js";
 import type { AgentStateType } from "../state.js";
 import { buildReconciliationPrompt } from "../prompts.js";

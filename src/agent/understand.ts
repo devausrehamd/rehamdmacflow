@@ -14,7 +14,7 @@
 // Everything degrades gracefully: if the analysis JSON won't parse, we fall
 // back to a heuristic understanding so the pipeline never hard-fails.
 
-import { llm } from "../clients.js";
+import { llm } from "../llm-client.js";
 import { extractJson } from "./parse.js";
 
 export type QuestionType = "factual" | "relational" | "descriptive" | "mixed";

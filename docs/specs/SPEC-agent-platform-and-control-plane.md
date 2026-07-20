@@ -37,22 +37,22 @@ processes itself, and it never substitutes its own authority for the user's.
 
 ```mermaid
 flowchart TB
-  user([User]) -->|/ask + JWT| talk[Talk Agent / Orchestrator]
-  talk -->|resolve capability -> address| disc[(Discovery: registry)]
-  talk -->|ensure-running| sup[Supervisor]
-  sup -->|launch from init.json @tag| agents
-  subgraph agents[Configured agents - one runtime, many configs]
-    r[research:qms]
-    t[think:capa]
-    x[export:docx]
-    a[act:email]
+  user([User]) -->|ask plus JWT| talk["Talk Agent / Orchestrator"]
+  talk -->|resolve capability to address| disc[("Discovery registry")]
+  talk -->|ensure running| sup["Supervisor"]
+  sup -->|launch from manifest tag| agents
+  subgraph agents["Configured agents - one runtime, many configs"]
+    r["research:qms"]
+    t["think:capa"]
+    x["export:docx"]
+    a["act:email"]
   end
-  talk -->|dispatch step + CALLER JWT| agents
-  agents -->|verify JWT + entitlements| ids[(ID Server)]
-  talk -->|custody chain single-writer| prov[(Provenance API)]
-  agents -->|write-ahead trajectory| hist[(DAG History endpoint)]
-  agents -->|content-addressed artifacts| store[(Artifact store)]
-  cfg[(Git: agent manifests + task catalog + rubrics, tagged)] -.->|pinned commit| sup
+  talk -->|dispatch step plus caller JWT| agents
+  agents -->|verify JWT plus entitlements| ids[("ID Server")]
+  talk -->|custody chain, single writer| prov[("Provenance API")]
+  agents -->|write-ahead trajectory| hist[("DAG History endpoint")]
+  agents -->|content-addressed artifacts| store[("Artifact store")]
+  cfg[("Git: manifests, catalog, rubrics - tagged")] -.->|pinned commit| sup
   cfg -.-> talk
 ```
 
@@ -142,21 +142,21 @@ sequenceDiagram
   participant S as Supervisor
   participant R as research:qms
   participant ID as ID Server
-  U->>T: /ask + JWT  (new session: correlationId, userId logged)
-  T->>T: classify -> task in catalog? (readiness gate: confirm before spend)
-  T->>D: are {research:qms,...} live & ready?
-  alt missing / not ready
-    T->>S: ensure-running(research:qms @ manifest tag)
-    S->>R: launch -> configure -> ingest -> READY
-    R->>D: register(ready, capabilities, guid, configCommit)
+  U->>T: ask plus JWT - new session, correlationId and userId logged
+  T->>T: classify to a task in the catalog - readiness gate, confirm before spend
+  T->>D: are research:qms and the others live and ready
+  alt missing or not ready
+    T->>S: ensure-running research:qms at its manifest tag
+    S->>R: launch, configure, ingest, then READY
+    R->>D: register ready with capabilities, guid and configCommit
   end
-  D-->>T: {guid, address} per capability
-  T->>R: dispatch(step, input artifacts, CALLER JWT)
-  R->>ID: verify JWT (sig, issuer, exp) + resolve entitlements
-  R->>R: work; write-ahead each step to DAG History; produce artifact (hash)
+  D-->>T: guid and address per capability
+  T->>R: dispatch step with input artifacts and the caller JWT
+  R->>ID: verify JWT signature, issuer, expiry and resolve entitlements
+  R->>R: work and write-ahead each step to DAG History, produce an artifact hash
   R-->>T: artifact hash
-  T->>T: gather_complete (custody chain) -> rubric (trajectory + criteria) -> gate
-  T-->>U: answer + provenance (or "missing X" / "denied")
+  T->>T: gather_complete to the custody chain, then rubric and gate
+  T-->>U: answer with provenance, or missing-input, or denied
 ```
 
 Maps your steps 1–9. The classification in step 1 is the **new non-deterministic

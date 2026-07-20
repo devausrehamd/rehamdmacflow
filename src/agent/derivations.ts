@@ -78,9 +78,23 @@ function mentioned(question: string, term: string): boolean {
 }
 
 /**
- * The derivations that apply to THIS question and table: the predicate's column
- * must exist in the table, the table scope (if any) must match its display name,
- * and the term or one of its aliases must appear in the question.
+ * Every derivation DEFINED for a table (independent of the question): the
+ * predicate's column exists and the table scope, if any, matches. Used to tell a
+ * caller which interpretive terms the QMS does define when it abstains on one.
+ */
+export function derivationsForTable(
+  tableDisplayName: string,
+  columns: ColumnSchema[],
+  all: Derivation[] = loadDerivations(),
+): Derivation[] {
+  const cols = new Set(columns.map((c) => c.sql_name));
+  const name = tableDisplayName.toLowerCase();
+  return all.filter((d) => cols.has(d.predicate.column) && (!d.table || name.includes(d.table.toLowerCase())));
+}
+
+/**
+ * The derivations that apply to THIS question and table: defined for the table
+ * (derivationsForTable) AND the term or one of its aliases appears in the question.
  */
 export function applicableDerivations(
   question: string,
@@ -88,14 +102,10 @@ export function applicableDerivations(
   columns: ColumnSchema[],
   all: Derivation[] = loadDerivations(),
 ): Derivation[] {
-  const cols = new Set(columns.map((c) => c.sql_name));
   const q = question.toLowerCase();
-  const name = tableDisplayName.toLowerCase();
-  return all.filter((d) => {
-    if (!cols.has(d.predicate.column)) return false;
-    if (d.table && !name.includes(d.table.toLowerCase())) return false;
-    return [d.term, ...(d.aliases ?? [])].some((t) => mentioned(q, t));
-  });
+  return derivationsForTable(tableDisplayName, columns, all).filter((d) =>
+    [d.term, ...(d.aliases ?? [])].some((t) => mentioned(q, t)),
+  );
 }
 
 /** Render the applicable definitions as a planner-prompt block. Each shows the

@@ -28,7 +28,7 @@ import {
 import { getTable, queryTable, DataApiError } from "../../data/client.js";
 import { custodyClient } from "../../data/custody-client.js";
 import { checkGrounding, fieldSummary, type GroundingIssue } from "../grounding.js";
-import { applicableDerivations } from "../derivations.js";
+import { applicableDerivations, derivationsForTable } from "../derivations.js";
 
 interface BlurbRef {
   tableId: string;
@@ -124,8 +124,26 @@ export async function sqlRetrieve(state: AgentStateType): Promise<Partial<AgentS
       }
 
       // Plan the query
-      let queryReq = await planQuery(question, detail.columns, definitions);
+      const plan = await planQuery(question, detail.columns, definitions);
+      let queryReq = plan.query;
       console.log(`[sql-retrieve] planned query for ${tableId}: ${JSON.stringify(queryReq)}`);
+
+      // The decoder abstained on an interpretive term it could not map to a
+      // column value or a defined term (increment 3). Its query omits that term,
+      // so executing it would silently drop the user's intent — call it out
+      // instead, and suggest the terms the QMS does define.
+      if (plan.unresolved.length > 0) {
+        console.log(`[sql-retrieve] unresolved term(s) for ${tableId}: ${plan.unresolved.map((u) => u.term).join(", ")}`);
+        groundingIssues.push({
+          tableId,
+          displayName: detail.display_name,
+          ungrounded: [],
+          unresolvedTerms: plan.unresolved,
+          availableFields: fieldSummary(detail.columns),
+          definedTerms: derivationsForTable(detail.display_name, detail.columns).map((d) => d.term),
+        });
+        continue;
+      }
 
       // Grounding gate: a filter whose value falls outside its column's domain is
       // a decode failure ("likelihood = 5" when likelihood is 1–4), not a "0
@@ -142,7 +160,7 @@ export async function sqlRetrieve(state: AgentStateType): Promise<Partial<AgentS
           if (err instanceof DataApiError && err.status === 400) {
             console.log(`[sql-retrieve] query rejected (${err.message}), replanning...`);
             // Replan with the error, try once more
-            queryReq = await planQuery(question, detail.columns, definitions, err.message);
+            queryReq = (await planQuery(question, detail.columns, definitions, err.message)).query;
             console.log(`[sql-retrieve] replanned query: ${JSON.stringify(queryReq)}`);
             grounding = checkGrounding(queryReq, detail.columns);
             if (grounding.grounded) result = await queryTable(authToken, tableId, queryReq);

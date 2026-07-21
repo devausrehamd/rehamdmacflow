@@ -18,6 +18,7 @@ import { execSync } from "node:child_process";
 import { dirname } from "node:path";
 import { config, type AgentMode } from "../config.js";
 import { listRubricTypes, rubricSetHash } from "../drafting/rubric-loader.js";
+import { loadManifest } from "../platform/manifest.js";
 
 export interface RegisterConfig {
   discoveryUrl: string;
@@ -176,6 +177,19 @@ function safeRubricSetHash(): string | undefined {
  *  type it cannot judge sends work to a dead end. Under-claiming is the safe
  *  failure here. */
 function safeCapabilities(): string[] {
+  // A role agent (a container booted from a manifest) advertises exactly the
+  // capabilities its manifest declares — "research:qms" for a researcher — not the
+  // monolith's document-type rubrics. QMS_MANIFEST selects that role.
+  const manifestPath = process.env.QMS_MANIFEST;
+  if (manifestPath) {
+    try {
+      return loadManifest(manifestPath).manifest.capabilities.slice().sort();
+    } catch (err) {
+      console.error(`[discovery] could not read manifest ${manifestPath}: ${err instanceof Error ? err.message : err}`);
+      return [];
+    }
+  }
+  // The monolith default: advertise the document types it has committed rubrics for.
   try {
     return listRubricTypes().slice().sort();
   } catch {

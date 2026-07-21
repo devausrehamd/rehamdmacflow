@@ -1,0 +1,13 @@
+# Keep the image lean and free of host state / secrets — all config arrives via
+# environment variables at run time (docs/specs/SPEC-operational-control-plane.md).
+node_modules
+.git
+.env
+.env.*
+*.log
+.stack
+dist
+coverage
+identity/agent-guid*.txt
+scratchpad
+docs

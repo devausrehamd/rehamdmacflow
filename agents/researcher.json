@@ -1,0 +1,14 @@
+{
+  "$comment": "Role manifest for a researcher agent (operational control plane, SPEC-operational-control-plane.md). The launcher boots the agent image with QMS_MANIFEST pointed here; the agent advertises exactly these capabilities to Discovery and serves work for them via the capability-invocation endpoint. idServerUrl defaults to the container's view of the host ID Server; override via env in the launcher.",
+  "name": "qms-researcher",
+  "role": "researcher",
+  "capabilities": ["research:qms"],
+  "identity": {
+    "idServerUrl": "http://host.docker.internal:3001",
+    "issuer": "rehamd-idserver",
+    "serviceTokenEnv": "QMS_SERVICE_TOKEN"
+  },
+  "permissions": "all",
+  "ingestion": { "sources": [], "schedule": "on-boot", "state": "ephemeral" },
+  "resources": { "cpu": 1, "memoryMb": 1024 }
+}

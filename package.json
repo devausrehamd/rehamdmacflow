@@ -72,7 +72,8 @@
     "smoke:abstain": "tsx scripts/smoke-test-abstain.ts",
     "integration:query-record-api": "tsx scripts/smoke-test-query-record-api-live.ts",
     "smoke:d0": "bash scripts/smoke-d0-container.sh",
-    "integration:provisioning": "tsx scripts/smoke-test-provisioning-live.ts"
+    "integration:provisioning": "tsx scripts/smoke-test-provisioning-live.ts",
+    "integration:api-launcher": "tsx scripts/smoke-test-api-launcher-live.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.1.48",

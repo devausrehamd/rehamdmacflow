@@ -7,6 +7,7 @@
     "node": ">=20.0.0"
   },
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
     "agent": "tsx src/index.ts",
     "api": "tsx src/api/server.ts",
     "ingest:repo": "tsx src/ingestion/cli.ts",

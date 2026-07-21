@@ -1,0 +1,40 @@
+#!/usr/bin/env sh
+#
+# commit-msg guard: enforce Conventional Commits on the subject line so every
+# checkin stays machine-readable (type(scope): summary). Installed via
+# core.hooksPath (see the root package.json "prepare" script), alongside pre-push.
+#
+# Passes: feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert, an optional
+# (scope), an optional ! for breaking changes, then ": summary".
+#   feat(core): add the capability-invocation endpoint
+#   chore: merge D4 — wire /ask to spawned agents
+#   fix(api)!: change the provisioning contract
+# Autosquash helpers (fixup!/squash!/amend!) pass through untouched.
+#
+# Bypass in a genuine one-off:  git commit --no-verify
+
+msg_file="$1"
+
+# The subject is the first non-blank, non-comment line.
+subject=$(grep -vE '^[[:space:]]*#' "$msg_file" | grep -vE '^[[:space:]]*$' | head -n1)
+
+# Rebase autosquash markers are resolved later — let them through.
+case "$subject" in
+  "fixup! "* | "squash! "* | "amend! "*) exit 0 ;;
+esac
+
+if printf '%s' "$subject" | grep -qE '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9._:/ -]+\))?!?: .+'; then
+  exit 0
+fi
+
+RED='\033[0;31m'; NC='\033[0m'
+printf "${RED}✗ commit rejected:${NC} the subject is not a Conventional Commit.\n\n" >&2
+printf "  got:      %s\n" "$subject" >&2
+printf "  expected: type(scope): summary\n" >&2
+printf "  types:    feat fix docs style refactor perf test build ci chore revert\n\n" >&2
+printf "  examples: feat(core): add the capability-invocation endpoint\n" >&2
+printf "            chore: merge D4 — wire /ask to spawned agents\n" >&2
+printf "            fix(api)!: change the provisioning contract\n\n" >&2
+printf "  A plain 'Merge branch …' or 'Revert …' is rejected too — use chore:/revert:.\n" >&2
+printf "  Bypass in a genuine one-off: git commit --no-verify\n" >&2
+exit 1

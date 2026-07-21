@@ -102,7 +102,49 @@ Borrowed **in shape** from A2A's Agent Card. Not A2A itself.
 
 ---
 
-## 3. The Langfuse link
+## 3. The Data Access API — the database boundary (0.2.0)
+
+`src/api/routes/data-access.ts`, `src/data/*-client.ts`. The governing rule
+(decision 13 of the [control-plane spec](specs/SPEC-agent-platform-and-control-plane.md)):
+
+> **All request-path database access is API-mediated.** Every read and write made
+> while serving a request — to Postgres and to Qdrant — goes through a REST
+> endpoint. No request-path component holds a direct database client, and agents
+> carry no database credentials, even against a co-located database.
+
+The API is the one place the caller is authenticated, permissions are filtered
+(`min(user, agent)`, [01](01-security.md)), fields are redacted, and access is
+audited — and it decouples every caller from storage, so a store can be moved,
+sharded, or load-balanced without touching a caller. The caller's bearer token is
+propagated to each store call, so retrieval and SQL run under the *user's* access,
+not the agent's.
+
+**What moved behind it in 0.2.0:** custody events, the run/LLM-trace and
+DAG-History writes, vector search (the tier gate + label filter now enforced
+server-side from the token), and the `QueryRecord` run state. The agent role holds
+an HTTP client + token for each — never a DB client. `npm run smoke:agent-db-free`
+walks the agent's *runtime import graph* and fails if it can reach any
+Postgres/Qdrant/Redis client, so the boundary can't quietly erode as the code
+grows.
+
+**The one exception is ingestion** (`npm run ingest:repo`) — a trusted, offline,
+admin-triggered batch that runs only when fired, never on caller input. It writes
+Postgres and Qdrant directly, as a deliberate ETL boundary. See
+[02-ingestion.md](02-ingestion.md).
+
+### The control plane (Stages 0–5, built)
+
+The same release made the [control-plane spec](specs/SPEC-agent-platform-and-control-plane.md)
+real: Discovery-backed **capability resolution** (capability → live agent), the
+git-tagged **agent manifest** (a generic runtime specialised at boot), the
+**DAG-History** trajectory store, the **Supervisor** (ensure-running, TTL), and the
+**Talk Agent `/ask`** that classifies a request, confirms the capability, and
+orchestrates the answer. How that answer is then *formed* — deterministically where
+the data allows — is [10-answering.md](10-answering.md).
+
+---
+
+## 4. The Langfuse link
 
 `observabilityUrl` is per-agent in the Agent Card, so the GUI can deep-link a
 reviewer to *that agent's* Langfuse, filtered to the run:
@@ -122,7 +164,7 @@ it wasn't designed for.
 
 ---
 
-## 4. Running the stack
+## 5. Running the stack
 
 `stack.sh` (at `~/projects/`) owns all service processes via a pid dir.
 

@@ -152,6 +152,19 @@ from *writing*. Close it before this is anything real.
 The builder is **pure** — `(schema, request) => { sql, params }` — so it's fully
 testable without a database (`npm run smoke:dataplane`).
 
+### The sixth barrier (0.2.0): the query never touches the database in-process
+
+As of 0.2.0 the barriers above sit **behind a REST boundary**. Every request-path
+read and write — SQL, vectors, custody, run state — goes through the Data Access
+API; no request-path component holds a database client, and the caller's token is
+verified and applied (`min(user, agent)`) at that one door. So the whitelist and
+the parameterisation are enforced *server-side*, where the agent cannot bypass
+them, and access is authenticated and audited per call. This is decision 13 —
+see [09 §3](09-services-and-auth.md) — and it is guarded: `npm run
+smoke:agent-db-free` fails if the agent role can reach any database client at all.
+The grounding gate that stops the planner *guessing* a filter is a separate
+concern, in [10-answering.md](10-answering.md).
+
 ---
 
 ## 5. Known security debt (tracked, not forgotten)

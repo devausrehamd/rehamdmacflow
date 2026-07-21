@@ -1,8 +1,9 @@
 # SPEC · Operational control plane — role agents on containers
 
-Status: **design → build (D0 in progress)**. Supersedes the "control plane is
-BUILT" claim in the 0.2.0 status table, which was true of the *components* and
-false of the *end-to-end orchestration*.
+Status: **building** — D0 (container image + role-boot) is built and verified;
+D2a (Provisioning API + Docker provider) in progress. Supersedes the "control
+plane is BUILT" claim in the 0.2.0 status table, which was true of the *components*
+and false of the *end-to-end orchestration*.
 
 ## 0. The gap this closes
 
@@ -47,6 +48,16 @@ downstream orchestration is unchanged.
    on the host; Qdrant and the spawned agents run under Colima. A container reaches
    host services and the sibling services (Discovery, ID Server, the orchestrator's
    Data Access API) by env-configured URLs, defaulting to `host.docker.internal`.
+7. **Compute provisioning is API-mediated, and providers are swappable behind it.**
+   Instance lifecycle — provision / status / destroy — goes through a Provisioning
+   API, and behind that API a single `ComputeProvider` is selected by one config
+   value (`QMS_COMPUTE_PROVIDER`). Moving from a local Docker container to a cloud
+   VM is one new provider class and one config change; nothing above the API — the
+   Supervisor, the orchestrator, the agents — is touched. This is decision 13
+   applied to compute: the Supervisor holds an HTTP client and a token, never a
+   Docker or cloud SDK or its credentials. "VM" versus "container" disappears at
+   the boundary: the contract is *provision a ready instance / destroy it*, which a
+   `DockerProvider` fulfils with a container and an `Ec2Provider` with a VM.
 
 ## 2. The pipeline
 
@@ -105,18 +116,46 @@ researcher and answers `/health` — proven by a smoke that runs the container a
 polls Discovery. Networking (container → host services) is the hard part and is
 settled here, before anything is built on top.
 
-## 5. The launcher (D2)
+## 5. The compute plane — Provisioning API + provider (D2)
 
-`DockerLauncher implements Launcher`:
+Three layers, one swap point (decision 7):
 
-- `launch(manifest)` → allocate a host port → `docker run -d` the image with the
-  manifest, a service token, and the service URLs → wait until the new agent both
-  answers `/health` and appears in Discovery (the `Launcher` contract: resolve
-  **only when ready**) → return `{ guid, address }`.
-- `stop(guid)` → `docker stop && docker rm`, then confirm Discovery has dropped it.
+```
+Supervisor ──HTTP──► Provisioning API ──► ComputeProvider ──► docker | fly | ec2 | …
+(ensureRunning)      /api/v1/instances     provision/destroy/status
+```
 
-Port allocation, container naming (by guid), and image tag are the launcher's
-concern. The Supervisor is booted with this launcher and the role manifests.
+**Provisioning API** — the stable, provider-agnostic contract for instance
+lifecycle:
+
+| Method | Route | Does |
+|---|---|---|
+| `POST` | `/api/v1/instances` | provision from `{ role/manifest, configCommit, env }` → `{ instanceId, guid, address, status }`; resolves **only when the agent is ready** (health + registered) |
+| `GET` | `/api/v1/instances/:id` | status / health |
+| `GET` | `/api/v1/instances` | list — for reconciliation against Discovery and DAG-History |
+| `DELETE` | `/api/v1/instances/:id` | stop **and** destroy |
+
+**`ComputeProvider`** — the one place that changes when the substrate changes:
+
+```ts
+interface ComputeProvider {
+  provision(spec: InstanceSpec): Promise<ProvisionedInstance>; // docker run | cloud create
+  destroy(instanceId: string): Promise<void>;                   // docker rm  | terminate
+  status(instanceId: string): Promise<InstanceStatus>;
+  list(): Promise<InstanceStatus[]>;
+}
+```
+
+`DockerProvider` (D2a) fulfils it with the D0 `docker run`/`rm` flow: allocate a
+host port, run the image with the role manifest and the service URLs, wait until
+the agent answers `/health` and appears in Discovery, correlate by its advertised
+address to read its GUID, and return the instance. A cloud provider drops in later
+behind the same interface, selected by `QMS_COMPUTE_PROVIDER`.
+
+**`ApiLauncher`** (D2b) — the Supervisor's `Launcher`, implemented as an HTTP
+client to the Provisioning API: `launch(manifest)` → `POST /instances`,
+`stop(guid)` → `DELETE /instances/:id`. The Supervisor never knows whether an
+instance is a container or a VM.
 
 ## 6. Capability invocation — the work handoff (D1)
 
@@ -166,8 +205,12 @@ is handed on `/invoke` so data access runs under `min(user, agent)`
   registers in Discovery, `/health` ok. *The networking is settled here.*
 - **D1 — Capability-invocation endpoint.** `/capabilities/:cap/invoke` serving the
   role's providers. Smoke: invoke → data; unauth → 401.
-- **D2 — DockerLauncher.** `launch`/`stop` over `docker`. Integration (Colima):
-  launch → new GUID live in Discovery; stop → container removed.
+- **D2a — Provisioning API + `DockerProvider`.** The `POST/GET/DELETE /instances`
+  routes backed by the Docker provider (the D0 `docker run` flow, now behind the
+  contract) and selected by `QMS_COMPUTE_PROVIDER`. Integration (Colima): `POST`
+  provisions a researcher that registers in Discovery; `DELETE` destroys it.
+- **D2b — `ApiLauncher`.** The Supervisor's `Launcher` as an HTTP client to the
+  Provisioning API. Integration: launch/stop a researcher through the API.
 - **D3 — Remote provider + registry.** Dispatch via `ensureRunning` + `/invoke`.
   Smoke: stub supervisor + fake agent — dispatches, launches once per capability.
 - **D4 — Wire `/ask` + reaping.** Orchestrator runs gather → thinker → export/act

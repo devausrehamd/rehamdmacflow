@@ -42,6 +42,11 @@ what. The exact cross-service token contract is in
   request-path database access is API-mediated. **Stages 0–5 and the decision-13
   refactor (R1–R5) are BUILT in 0.2.0**; the ingestion converter registry remains
   designed.
+- [operational control plane — role agents on containers](specs/SPEC-operational-control-plane.md)
+  — makes the control plane real: a prompt spawns isolated role agents
+  (researcher/thinker/exporter/actioner) in containers, dispatches work by
+  capability, gathers content-addressed results, and reaps by TTL. Closes the gap
+  where `/ask` runs in-process and nothing spawns a real agent (**build, D0**).
 
 ---
 
@@ -74,7 +79,8 @@ code**, however sensible the surrounding comments make it sound.
 | GUI (thin client: login, rubric editor, review queue, k-sampling steering, **Ask**) | **BUILT** | `../gui` |
 | **Data Access API — all request-path DB access API-mediated** (decision 13) | **BUILT (0.2.0)** | `src/api/routes/data-access.ts`, `src/data/*-client.ts` |
 | Agent role holds no DB/vector/cache client — guarded | **BUILT (0.2.0)** | `npm run smoke:agent-db-free` |
-| Control plane: capability resolution, manifest, DAG-History, Supervisor, Talk Agent `/ask` | **BUILT (0.2.0)** | `src/orchestrator/`, `src/platform/`, `src/api/routes/orchestrator.ts` |
+| Control-plane **components**: capability resolution, manifest, DAG-History, Supervisor logic, `/ask` (in-process) | **BUILT (0.2.0)** | `src/orchestrator/`, `src/platform/`, `src/api/routes/orchestrator.ts` |
+| `/ask` **spawns + dispatches to real role agents** (multi-agent orchestration) | **DESIGNED — building** | [SPEC-operational-control-plane](specs/SPEC-operational-control-plane.md); today `/ask` runs the graph in-process and the only `Launcher` is a test stub |
 | Deterministic exact-data short-circuit (no LLM for count answers) | **BUILT (0.2.0)** | `src/agent/compose-exact.ts` |
 | Grounding gate — call out an impossible/undefined filter | **BUILT (0.2.0)** | `src/agent/grounding.ts` |
 | Derivation registry — QMS defines interpretive terms | **BUILT (0.2.0)** | `derivations/`, `src/agent/derivations.ts` |

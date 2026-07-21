@@ -36,7 +36,8 @@ the authoritative doc home for the whole stack. Read in order:
 | 06 | [Rubrics](docs/06-rubrics.md) | Weighted-binary criteria, scoring, k-sampling |
 | 07 | [Custody & provenance](docs/07-custody-provenance.md) | The hash chain, the external sink |
 | 08 | [Review & writes](docs/08-review-and-writes.md) | Human gating, why writes can't self-approve |
-| 09 | [Services & auth](docs/09-services-and-auth.md) | The four services, discovery, the auth contract |
+| 09 | [Services & auth](docs/09-services-and-auth.md) | The four services, discovery, the Data Access API (all DB access API-mediated), the auth contract |
+| 10 | [Answering](docs/10-answering.md) | The deterministic/LLM boundary: exact-data short-circuit, grounding gate, derivation registry, decoder abstain |
 
 Rubric-authoring rules: [`docs/RUBRIC_AUTHORING_RULES.md`](docs/RUBRIC_AUTHORING_RULES.md).
 

@@ -10,6 +10,15 @@ question ──► understand (rephrasings) ──┬─► PROSE lane  : vector
                                         └─► TABLE lane  : blurb hit -> SQL planner -> SQL ──┘
 ```
 
+> **0.2.0 — retrieval is API-mediated, and the planner is fenced.** Both lanes now
+> reach their stores through the Data Access API, not an in-process client: the
+> vector search carries the caller's token and the tier/label filter is applied
+> server-side ([09 §3](09-services-and-auth.md)). And the planner no longer guesses
+> at interpretive terms — it decodes them from a QMS registry, abstains when it
+> can't, and a grounding gate refuses an impossible filter. What happens to the
+> retrieved evidence — deterministic answer or LLM synthesis — is
+> [10-answering.md](10-answering.md).
+
 ---
 
 ## 1. The two lanes

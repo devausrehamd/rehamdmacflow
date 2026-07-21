@@ -66,6 +66,10 @@ boundary contract).
   flow, lifecycle, and the locked decisions.
 - **docs(spec): hard rule — all database access is API-mediated** (decision 13),
   with **ingestion recorded as a privileged ETL exception** (R5).
+- **docs: technical docs brought up to 0.2.0** — a new
+  [10-answering.md](docs/10-answering.md) for the deterministic/LLM boundary, a
+  Data Access API section in services (09) and security (01), a retrieval note
+  (03), and the honest status table moved to BUILT.
 
 ## 0.1.0
 

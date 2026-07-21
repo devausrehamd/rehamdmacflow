@@ -24,7 +24,8 @@ choice here follows from one idea, and the code makes no sense without it.
 | 06 | [Rubrics](06-rubrics.md) | Weighted-binary criteria, deterministic scoring, draft/committed, k-sampling |
 | 07 | [Custody & provenance](07-custody-provenance.md) | The hash chain, the external sink, what is (and isn't) recorded |
 | 08 | [Review & writes](08-review-and-writes.md) | Human gating, edit provenance, why writes can't self-approve |
-| 09 | [Services & auth](09-services-and-auth.md) | The four services, discovery, the auth contract |
+| 09 | [Services & auth](09-services-and-auth.md) | The four services, discovery, the **Data Access API** (all DB access API-mediated), the auth contract |
+| 10 | [Answering](10-answering.md) | The deterministic/LLM boundary: exact-data short-circuit, grounding gate, the derivation registry, decoder abstain |
 
 These numbered docs *are* the decision record — each explains **why**, not just
 what. The exact cross-service token contract is in
@@ -36,9 +37,11 @@ what. The exact cross-service token contract is in
   — researcher → thinker → exporter → actioner, with parallel-safe content-addressed
   provenance and a deterministic input gate before the LLM (Phases 1–6, **built**).
 - [agent platform & control plane (AgentAsSoftware)](specs/SPEC-agent-platform-and-control-plane.md)
-  — the next step: declarative config-driven agents, Discovery + Supervisor,
-  JWT propagation, a write-ahead trajectory-history endpoint, dedup, and pluggable
-  ingestion converters (**design / thinking**).
+  — declarative config-driven agents, Discovery + Supervisor, JWT propagation, a
+  write-ahead trajectory-history endpoint, and the decision-13 rule that all
+  request-path database access is API-mediated. **Stages 0–5 and the decision-13
+  refactor (R1–R5) are BUILT in 0.2.0**; the ingestion converter registry remains
+  designed.
 
 ---
 
@@ -68,7 +71,14 @@ code**, however sensible the surrounding comments make it sound.
 | External provenance sink | **BUILT** | `src/custody/sink.ts` |
 | Human review contract + edit provenance | **BUILT** | `src/drafting/human-edit.ts`, `src/api/routes/review.ts` |
 | ID Server (identity) / Discovery (registry) | **BUILT** | `../idserver`, `../discovery` |
-| GUI (thin client: login, rubric editor, review queue, k-sampling steering) | **BUILT** | `../gui` |
+| GUI (thin client: login, rubric editor, review queue, k-sampling steering, **Ask**) | **BUILT** | `../gui` |
+| **Data Access API — all request-path DB access API-mediated** (decision 13) | **BUILT (0.2.0)** | `src/api/routes/data-access.ts`, `src/data/*-client.ts` |
+| Agent role holds no DB/vector/cache client — guarded | **BUILT (0.2.0)** | `npm run smoke:agent-db-free` |
+| Control plane: capability resolution, manifest, DAG-History, Supervisor, Talk Agent `/ask` | **BUILT (0.2.0)** | `src/orchestrator/`, `src/platform/`, `src/api/routes/orchestrator.ts` |
+| Deterministic exact-data short-circuit (no LLM for count answers) | **BUILT (0.2.0)** | `src/agent/compose-exact.ts` |
+| Grounding gate — call out an impossible/undefined filter | **BUILT (0.2.0)** | `src/agent/grounding.ts` |
+| Derivation registry — QMS defines interpretive terms | **BUILT (0.2.0)** | `derivations/`, `src/agent/derivations.ts` |
+| Decoder abstains on undefined interpretive terms | **BUILT (0.2.0)** | `src/agent/sql-planner.ts` |
 | Corpus backtest (outer loop) | **DESIGNED — NOT BUILT** | needs labelled rejected-history corpus |
 | Renderer agent (docx/xlsx) | **DESIGNED — NOT BUILT** | markdown renderer exists |
 
